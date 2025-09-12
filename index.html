@@ -3,201 +3,455 @@
 <head>
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
-    <title>Telegram Mini Uygulaması</title>
+    <title>Telegram Mini App</title>
     <script src="https://telegram.org/js/telegram-web-app.js"></script>
     <script src="https://cdn.tailwindcss.com"></script>
+    <link rel="preconnect" href="https://fonts.googleapis.com">
+    <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+    <link href="https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700&display=swap" rel="stylesheet">
+    <style>
+        body {
+            font-family: 'Inter', sans-serif;
+        }
+        .animate-fadeIn {
+            animation: fadeIn 0.8s forwards;
+        }
+        @keyframes fadeIn {
+            from { opacity: 0; transform: translateY(10px); }
+            to { opacity: 1; transform: translateY(0); }
+        }
+        .game-transition-in {
+            animation: slideIn 0.5s forwards;
+        }
+        .game-transition-out {
+            animation: slideOut 0.5s forwards;
+        }
+        @keyframes slideIn {
+            from { transform: translateX(100%); }
+            to { transform: translateX(0); }
+        }
+        @keyframes slideOut {
+            from { transform: translateX(0); }
+            to { transform: translateX(-100%); }
+        }
+        /* Custom styles for the game section */
+        #gameCanvas {
+            box-shadow: 0 5px 20px rgba(0, 0, 0, 0.5);
+            touch-action: manipulation;
+        }
+        .faq-item.active .faq-answer {
+            max-height: 200px;
+            padding-top: 15px;
+        }
+        .game-button {
+            transition: transform 0.2s ease-in-out;
+        }
+        .game-button:hover {
+            transform: scale(1.05);
+        }
+    </style>
+</head>
+<body class="bg-gray-950 text-white min-h-screen flex flex-col items-center p-4">
+
+    <!-- Firebase Kütüphaneleri -->
     <script type="module">
         import { initializeApp } from "https://www.gstatic.com/firebasejs/11.6.1/firebase-app.js";
-        import { getAuth, signInAnonymously, signInWithCustomToken } from "https://www.gstatic.com/firebasejs/11.6.1/firebase-auth.js";
-        import { getFirestore, doc, getDoc, addDoc, setDoc, updateDoc, collection, query, where, onSnapshot } from "https://www.gstatic.com/firebasejs/11.6.1/firebase-firestore.js";
-        
-        // Firebase Auth ve Firestore objelerini global scope'a taşıma
+        import { getAuth, signInWithCustomToken } from "https://www.gstatic.com/firebasejs/11.6.1/firebase-auth.js";
+        import { getFirestore, doc, getDoc, setDoc, onSnapshot, collection, query, where } from "https://www.gstatic.com/firebasejs/11.6.1/firebase-firestore.js";
+
+        // Global değişkenler
         window.initializeApp = initializeApp;
         window.getAuth = getAuth;
-        window.signInAnonymously = signInAnonymously;
         window.signInWithCustomToken = signInWithCustomToken;
         window.getFirestore = getFirestore;
         window.doc = doc;
         window.getDoc = getDoc;
-        window.addDoc = addDoc;
         window.setDoc = setDoc;
-        window.updateDoc = updateDoc;
+        window.onSnapshot = onSnapshot;
         window.collection = collection;
         window.query = query;
         window.where = where;
-        window.onSnapshot = onSnapshot;
-    </script>
-    <style>
-        @import url('https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700;800&display=swap');
-        body {
-            font-family: 'Inter', sans-serif;
-        }
-        .scroll-hidden::-webkit-scrollbar {
-            display: none;
-        }
-        .scroll-hidden {
-            -ms-overflow-style: none; /* IE and Edge */
-            scrollbar-width: none; /* Firefox */
-        }
-    </style>
-</head>
-<body class="bg-gray-900 text-gray-100 flex flex-col items-center justify-center min-h-screen p-4">
 
-    <!-- Modal Yapısı -->
-    <div id="modal" class="fixed inset-0 z-50 hidden items-center justify-center bg-gray-900 bg-opacity-70 transition-opacity duration-300">
-        <div class="bg-gray-800 p-6 rounded-xl shadow-2xl max-w-sm w-full transform scale-95 transition-transform duration-300">
-            <h3 id="modalTitle" class="text-xl font-bold mb-4 text-center"></h3>
-            <p id="modalMessage" class="text-gray-300 text-center mb-6"></p>
-            <div id="modalButtons" class="flex justify-center space-x-4">
-                <button id="modalConfirm" class="bg-purple-600 hover:bg-purple-700 text-white font-bold py-2 px-6 rounded-full transition-colors duration-300">Onayla</button>
-                <button id="modalCancel" class="bg-gray-600 hover:bg-gray-700 text-white font-bold py-2 px-6 rounded-full transition-colors duration-300">İptal</button>
-            </div>
-        </div>
-    </div>
-
-    <!-- Ana İçerik -->
-    <div id="mainContent" class="w-full max-w-md space-y-4">
-        <div class="bg-gray-800 rounded-2xl shadow-lg p-6 flex flex-col items-center justify-center text-center">
-            <div class="flex items-center space-x-4 mb-4">
-                <div id="profileIcon" class="w-12 h-12 bg-purple-600 text-white font-bold text-2xl rounded-full flex items-center justify-center uppercase">?</div>
-                <h1 class="text-3xl font-extrabold text-purple-400" id="username">Yükleniyor...</h1>
-            </div>
-            <p class="text-gray-400 text-sm" id="userId"></p>
-            <p class="text-green-500 text-lg font-semibold mt-2" id="userScore">0 Puan</p>
-            <p id="userBanStatus" class="text-red-500 font-bold mt-2 hidden">Hesabınız yasaklanmıştır.</p>
-        </div>
-        
-        <div id="loadingIndicator" class="text-center text-gray-400 mt-4">Yükleniyor...</div>
-
-        <button id="playTowerBtn" class="w-full py-4 bg-purple-600 hover:bg-purple-700 text-white font-bold rounded-xl shadow-lg transition-all duration-300 transform hover:scale-105 active:scale-100">Kule Yıkma Oyna</button>
-        <button id="playRPSBtn" class="w-full py-4 bg-purple-600 hover:bg-purple-700 text-white font-bold rounded-xl shadow-lg transition-all duration-300 transform hover:scale-105 active:scale-100">Taş-Kağıt-Makas Oyna</button>
-        <button id="showShopBtn" class="w-full py-4 bg-purple-600 hover:bg-purple-700 text-white font-bold rounded-xl shadow-lg transition-all duration-300 transform hover:scale-105 active:scale-100">Ödül Mağazası</button>
-        <button id="showAdminBtn" class="w-full py-4 bg-red-600 hover:bg-red-700 text-white font-bold rounded-xl shadow-lg transition-all duration-300 transform hover:scale-105 active:scale-100 hidden">Yönetici Paneli</button>
-
-        <div class="bg-gray-800 rounded-2xl shadow-lg p-6">
-            <h2 class="text-xl font-bold mb-4 text-purple-400 border-b-2 border-purple-600 pb-2">Sıkça Sorulan Sorular</h2>
-            <div id="faqContainer">
-                <!-- FAQ items buraya -->
-            </div>
-        </div>
-    </div>
-    
-    <!-- Oyun Ekranı -->
-    <div id="gameContainer" class="w-full max-w-md space-y-4 hidden">
-        <div id="towerGameScreen" class="flex flex-col items-center">
-            <div class="bg-gray-800 rounded-2xl shadow-lg p-6 w-full flex flex-col items-center">
-                <h2 class="text-xl font-bold mb-4 text-purple-400 border-b-2 border-purple-600 pb-2">Kule Yıkma Oyunu</h2>
-                <div id="scoreDisplay" class="text-2xl font-bold text-green-500 mb-4">Skor: 0</div>
-                <canvas id="gameCanvas" width="300" height="400" class="bg-gray-700 rounded-lg shadow-xl mb-4 touch-none"></canvas>
-                <button id="startGameBtn" class="w-full py-3 bg-purple-600 hover:bg-purple-700 text-white font-bold rounded-xl transition-all duration-300 transform hover:scale-105 active:scale-100">Oyunu Başlat</button>
-                <button id="restartGameBtn" class="w-full py-3 bg-purple-600 hover:bg-purple-700 text-white font-bold rounded-xl transition-all duration-300 transform hover:scale-105 active:scale-100 hidden">Yeniden Başlat</button>
-            </div>
-        </div>
-
-        <div id="rpsGameScreen" class="flex flex-col items-center hidden">
-            <div class="bg-gray-800 rounded-2xl shadow-lg p-6 w-full flex flex-col items-center text-center">
-                <h2 class="text-xl font-bold mb-4 text-purple-400 border-b-2 border-purple-600 pb-2">Taş-Kağıt-Makas</h2>
-                <p class="text-gray-300 mb-4">Birini seç ve oyna:</p>
-                <div class="flex space-x-4 mb-4">
-                    <button id="rockBtn" class="text-5xl bg-gray-700 hover:bg-purple-500 p-4 rounded-xl transition-all duration-300 transform hover:scale-110 active:scale-95">✊</button>
-                    <button id="paperBtn" class="text-5xl bg-gray-700 hover:bg-purple-500 p-4 rounded-xl transition-all duration-300 transform hover:scale-110 active:scale-95">✋</button>
-                    <button id="scissorsBtn" class="text-5xl bg-gray-700 hover:bg-purple-500 p-4 rounded-xl transition-all duration-300 transform hover:scale-110 active:scale-95">✌️</button>
-                </div>
-                <div id="rpsResult" class="text-lg font-semibold text-white min-h-[4rem]"></div>
-                <button id="playAgainBtn" class="mt-4 w-full py-3 bg-purple-600 hover:bg-purple-700 text-white font-bold rounded-xl transition-all duration-300 transform hover:scale-105 active:scale-100 hidden">Tekrar Oyna</button>
-            </div>
-        </div>
-
-        <div class="bg-gray-800 rounded-2xl shadow-lg p-6 w-full">
-            <h2 class="text-xl font-bold mb-4 text-purple-400 border-b-2 border-purple-600 pb-2">Liderlik Tablosu</h2>
-            <ul id="leaderboardList" class="space-y-2">
-                <!-- Liderlik tablosu buraya -->
-            </ul>
-        </div>
-        
-        <button id="backToMainFromGameBtn" class="w-full py-4 bg-gray-700 hover:bg-gray-600 text-white font-bold rounded-xl shadow-lg transition-all duration-300">Geri Dön</button>
-    </div>
-
-    <!-- Ödül Mağazası -->
-    <div id="shopContainer" class="w-full max-w-md space-y-4 hidden">
-        <div class="bg-gray-800 rounded-2xl shadow-lg p-6 w-full">
-            <h2 class="text-xl font-bold mb-4 text-purple-400 border-b-2 border-purple-600 pb-2">Ödül Mağazası</h2>
-            <div id="shopItems" class="space-y-4">
-                <!-- Ürünler buraya -->
-            </div>
-            <div id="shopMessage" class="text-center font-bold mt-4"></div>
-        </div>
-        <button id="backToMainFromShopBtn" class="w-full py-4 bg-gray-700 hover:bg-gray-600 text-white font-bold rounded-xl shadow-lg transition-all duration-300">Geri Dön</button>
-    </div>
-
-    <!-- Yönetici Paneli -->
-    <div id="adminPanel" class="w-full max-w-md space-y-4 hidden">
-        <div class="bg-gray-800 rounded-2xl shadow-lg p-6 w-full">
-            <h2 class="text-xl font-bold mb-4 text-purple-400 border-b-2 border-purple-600 pb-2">Yönetici Paneli</h2>
-            <div id="adminUserList" class="space-y-4 scroll-hidden max-h-[60vh] overflow-y-auto">
-                <!-- Yönetici paneli kullanıcı listesi buraya -->
-            </div>
-        </div>
-        <button id="backToMainFromAdminBtn" class="w-full py-4 bg-gray-700 hover:bg-gray-600 text-white font-bold rounded-xl shadow-lg transition-all duration-300">Geri Dön</button>
-    </div>
-
-    <script>
-        // Global değişkenler
-        let db;
-        let auth;
-        let currentUserTelegramId = null;
-        let currentUserName = "Anonim";
-        let isUserBanned = false;
-        
-        // Firestore için global değişkenler
-        const __app_id = typeof __app_id !== 'undefined' ? __app_id : 'default-app-id';
-        const __firebase_config = typeof __firebase_config !== 'undefined' ? JSON.parse(__firebase_config) : {
+        const firebaseConfig = {
             apiKey: "AIzaSyBnktrT7Pp7WucJP_xtEu_mmQle_VthRAE",
             authDomain: "onwingiris-afccf.firebaseapp.com",
             projectId: "onwingiris-afccf",
-            storageBucket: "onwingiris-afccf.firebasestorage.app",
+            storageBucket: "onwingiris-afccf.appspot.com",
             messagingSenderId: "1059998132611",
             appId: "1:1059998132611:web:8ddcf7ed2bd56019796eb6",
+            measurementId: "G-DCSV6R5H98"
         };
-        const __initial_auth_token = typeof __initial_auth_token !== 'undefined' ? __initial_auth_token : null;
+        
+        window.firebaseApp = initializeApp(firebaseConfig);
+        window.auth = getAuth(window.firebaseApp);
+        window.db = getFirestore(window.firebaseApp);
 
-        const ADMIN_IDS = ["6817203711", "YOUR_ADMIN_TELEGRAM_ID_2", "YOUR_ADMIN_TELEGRAM_ID_3"]; // YÖNETİCİ ID'lerinizi buraya ekleyin
+        // Telegram Web App verisi
+        const WebApp = window.Telegram.WebApp;
+        WebApp.ready();
 
-        const rpsChoices = ['taş', 'kağıt', 'makas'];
-        const shopProducts = [
-            { id: '1', name: 'Özel Kullanıcı Rozeti', price: 1000, description: 'Telegram profilinizde kullanabileceğiniz nadir bir rozet.' },
-            { id: '2', name: 'Tek kullanımlık 250 Puan', price: 500, description: 'Oyun içinde kullanabileceğiniz 250 bonus puan.' },
-            { id: '3', name: 'Sınırsız Oyun Hakkı', price: 2000, description: 'Sınırlı süreliğine oyun hakkınızı yeniler.' },
-            { id: '4', name: 'Şanslı Kutu', price: 750, description: 'İçinden rastgele miktarda puan veya sürpriz ödül çıkar.' }
-        ];
+        if (WebApp.initDataUnsafe && WebApp.initDataUnsafe.auth_date) {
+            // Kullanıcı verisini auth_data ile doğrula ve giriş yap
+            const initData = WebApp.initData;
+            const authUrl = `https://onwingiris-afccf.web.app/auth?initData=${encodeURIComponent(initData)}`;
+            
+            fetch(authUrl)
+                .then(response => response.json())
+                .then(data => {
+                    signInWithCustomToken(window.auth, data.token).then(async (userCredential) => {
+                        const user = userCredential.user;
+                        console.log("Firebase Auth Success:", user);
+                        window.currentUser = user;
+                        // Kullanıcı verisini Firestore'da sakla/güncelle
+                        const userDocRef = doc(window.db, "users", user.uid);
+                        await setDoc(userDocRef, {
+                            firstName: WebApp.initDataUnsafe.user.first_name,
+                            lastName: WebApp.initDataUnsafe.user.last_name || null,
+                            username: WebApp.initDataUnsafe.user.username || null,
+                            lastLogin: new Date()
+                        }, { merge: true });
+                        document.getElementById('profileIcon').textContent = WebApp.initDataUnsafe.user.first_name.charAt(0).toUpperCase();
+                        document.getElementById('username').textContent = WebApp.initDataUnsafe.user.first_name || 'Kullanıcı';
+                        document.getElementById('userId').textContent = `@${WebApp.initDataUnsafe.user.username || user.uid}`;
+                    }).catch((error) => {
+                        console.error("Firebase Auth Error:", error);
+                        document.getElementById('username').textContent = 'Giriş Hatası';
+                    });
+                })
+                .catch(error => console.error("Auth server error:", error));
+        } else {
+            document.getElementById('username').textContent = 'Kullanıcı verisi alınamadı.';
+        }
+    </script>
 
-        // UI Elemanları
+
+    <!-- Ana İçerik Konteyneri -->
+    <div id="mainContent" class="container w-full max-w-lg mt-8 p-4 bg-indigo-950 rounded-2xl shadow-xl animate-fadeIn">
+        <div class="profile-header flex flex-col items-center justify-center p-4">
+            <div class="profile-info flex items-center gap-4 mb-3">
+                <div id="profileIcon" class="profile-icon w-12 h-12 flex items-center justify-center rounded-full bg-fuchsia-600 font-bold text-xl uppercase">?</div>
+                <h1 id="username" class="text-3xl font-bold text-fuchsia-300">Yükleniyor...</h1>
+            </div>
+            <p id="userId" class="text-gray-400 text-sm"></p>
+            <p id="userScore" class="text-fuchsia-400 text-lg font-semibold mt-2">0 Puan</p>
+        </div>
+        
+        <a href="https://cutt.ly/2rJxA8Z3" target="_blank" class="w-full mt-4 bg-fuchsia-600 text-white font-semibold py-3 px-6 rounded-xl shadow-lg hover:bg-fuchsia-700 transition-colors duration-200 block text-center">
+            Güncel Giriş
+        </a>
+
+        <div class="mt-6 space-y-4">
+            <button id="playTowerBtn" class="w-full bg-indigo-900 text-white font-semibold py-3 px-6 rounded-xl hover:bg-indigo-800 transition-colors duration-200">
+                Kule Yıkma Oyna
+            </button>
+            <button id="playRPSBtn" class="w-full bg-indigo-900 text-white font-semibold py-3 px-6 rounded-xl hover:bg-indigo-800 transition-colors duration-200">
+                Taş-Kağıt-Makas Oyna
+            </button>
+            <button id="showShopBtn" class="w-full bg-indigo-900 text-white font-semibold py-3 px-6 rounded-xl hover:bg-indigo-800 transition-colors duration-200">
+                Ödül Mağazası
+            </button>
+            <button id="showAdminBtn" class="w-full bg-indigo-900 text-white font-semibold py-3 px-6 rounded-xl hover:bg-indigo-800 transition-colors duration-200" style="display:none;">
+                Yönetici Paneli
+            </button>
+        </div>
+
+        <!-- Sıkça Sorulan Sorular -->
+        <div class="card w-full mt-6 p-4 bg-indigo-900 rounded-2xl shadow-lg">
+            <h2 class="text-xl font-bold text-fuchsia-300 border-b-2 border-fuchsia-400 pb-2 mb-4">Sıkça Sorulan Sorular</h2>
+            <div id="faqContainer" class="space-y-2">
+                 <div class="faq-item">
+                    <div class="faq-question cursor-pointer flex justify-between items-center text-lg font-semibold text-fuchsia-300 p-2 hover:bg-indigo-800 rounded-lg">
+                        <span>Nasıl Hesap Açabilirim?</span>
+                        <span>+</span>
+                    </div>
+                    <div class="faq-answer max-h-0 overflow-hidden text-gray-400 text-sm pl-4 transition-all duration-300">
+                        Üye Ol [Kayıt] butonuna tıkladığınızda çıkan kayıt formunu doldurarak kolayca hesap oluşturabilirsiniz. Kayıt sırasında girdiğiniz e-posta adresinizi doğrulamanız gerekmektedir. Adresinizi doğruladığınızda kayıt işlemi de tamamlanacaktır.
+                    </div>
+                </div>     
+                <div class="faq-item">
+                    <div class="faq-question cursor-pointer flex justify-between items-center text-lg font-semibold text-fuchsia-300 p-2 hover:bg-indigo-800 rounded-lg">
+                        <span>Neden Hesap Açamıyorum?</span>
+                        <span>+</span>
+                    </div>
+                    <div class="faq-answer max-h-0 overflow-hidden text-gray-400 text-sm pl-4 transition-all duration-300">
+                        Daha önce adınıza, e-posta adresinize, telefonunuza, adres bilgilerinize veya IP bilgilerinize kayıtlı bir hesabınız varsa, sistem yeni bir hesap oluşturmanıza izin vermeyecektir. Bu durumda bilgilerinizle birlikte ve sorunu anlatan bir e-posta göndererek müşteri hizmetleri temsilcilerimizden yardım alabilirsiniz.
+                    </div>
+                </div>
+                <div class="faq-item">
+                    <div class="faq-question cursor-pointer flex justify-between items-center text-lg font-semibold text-fuchsia-300 p-2 hover:bg-indigo-800 rounded-lg">
+                        <span>Botu kullanmak güvenli mi?</span>
+                        <span>+</span>
+                    </div>
+                    <div class="faq-answer max-h-0 overflow-hidden text-gray-400 text-sm pl-4 transition-all duration-300">
+                        Evet, botumuz kişisel bilgilerinizi korumak için tasarlanmıştır. Bot, size sadece güncel fırsatları sunar ve kişisel banka bilgilerinize erişemez.
+                    </div>
+                </div>
+                
+                <div class="faq-item">
+                    <div class="faq-question cursor-pointer flex justify-between items-center text-lg font-semibold text-fuchsia-300 p-2 hover:bg-indigo-800 rounded-lg">
+                        <span>ONWIN’e kayıt olmakla herhangi bir yükümlülük üstleniyor muyum?</span>
+                        <span>+</span>
+                    </div>
+                    <div class="faq-answer max-h-0 overflow-hidden text-gray-400 text-sm pl-4 transition-all duration-300">
+                        Hayır. Siteye kaydınız tamamen bağlayıcılıktan uzaktır ve düzenli olarak para yatırmak veya bahis oynamak mecburiyetiniz yoktur. Bununla birlikte kayıt olmak suretiyle Genel Şirket Şartnamemizi kabul etmiş olursunuz.
+                    </div>
+                </div>
+
+                <div class="faq-item">
+                    <div class="faq-question cursor-pointer flex justify-between items-center text-lg font-semibold text-fuchsia-300 p-2 hover:bg-indigo-800 rounded-lg">
+                        <span>Hesabımı Tamamen Nasıl Kapatabilirim?</span>
+                        <span>+</span>
+                    </div>
+                    <div class="faq-answer max-h-0 overflow-hidden text-gray-400 text-sm pl-4 transition-all duration-300">
+                       Üyelikten ayrılmanızı istemeyiz fakat hesabınızı kapatmak isterseniz yapmanız gereken, kapatma talebinizi nedeniyle birlikte e-posta olarak iletmeniz. En kısa sürede size dönüş yapılarak hesap kapatma işlemi gerçekleştirilecektir.
+                    </div>
+                </div>
+
+                <div class="faq-item">
+                    <div class="faq-question cursor-pointer flex justify-between items-center text-lg font-semibold text-fuchsia-300 p-2 hover:bg-indigo-800 rounded-lg">
+                        <span>Şifremi Unuttum, Ne Yapmalıyım?</span>
+                        <span>+</span>
+                    </div>
+                    <div class="faq-answer max-h-0 overflow-hidden text-gray-400 text-sm pl-4 transition-all duration-300">
+                        Şifrenizi unuttuysanız üst menüde en sağda yer alan soru işaretine tıklayarak yeni bir şifre talep edebilirsiniz. Bu işlem için e-posta adresinizi veya cep telefonu numaranızı kullanabilirsiniz. Ardından geçici bir şifre kayıtlı e-posta adresinize gönderilir.
+                    </div>
+                </div>
+
+                <div class="faq-item">
+                    <div class="faq-question cursor-pointer flex justify-between items-center text-lg font-semibold text-fuchsia-300 p-2 hover:bg-indigo-800 rounded-lg">
+                        <span>Bonusu nasıl çekebilirim?</span>
+                        <span>+</span>
+                    </div>
+                    <div class="faq-answer max-h-0 overflow-hidden text-gray-400 text-sm pl-4 transition-all duration-300">
+                        Verilen bonus tutarının çekilebilmesi için belirli koşulları yerine getirmeniz gereklidir. Bonusun türüne bağlı olarak kazancınızı veya bahis koşullarını yerine getirerek bonus için hesabınıza yatırdığınız tutarı çekebilirsiniz.
+Bonuslar, kampanya kural ve şartlarına bağlı olarak bazen oyun oynandıktan önce (çekilmesi kısıtlı bonuslar), bazende oyunlara katıldıktan ve bahis koşulları tümüyle yerine getirildikten sonra oyuncuların hesaplarına işlenir.
+                    </div>
+                </div>
+
+                <div class="faq-item">
+                    <div class="faq-question cursor-pointer flex justify-between items-center text-lg font-semibold text-fuchsia-300 p-2 hover:bg-indigo-800 rounded-lg">
+                        <span>Hesabımı doğrulamak zorunda mıyım?</span>
+                        <span>+</span>
+                    </div>
+                    <div class="faq-answer max-h-0 overflow-hidden text-gray-400 text-sm pl-4 transition-all duration-300">
+                        Çevrimiçi oyun kuralları uyarınca, yaşı uygun olmayan kişilerin sitemizde oynamadıklarından emin olmak için kimliğinizi ve yaşınızı doğrulamak zorundayız.
+                    </div>
+                </div>
+                
+                <div class="faq-item">
+                    <div class="faq-question cursor-pointer flex justify-between items-center text-lg font-semibold text-fuchsia-300 p-2 hover:bg-indigo-800 rounded-lg">
+                        <span>Birden fazla hesap açabilir miyim?</span>
+                        <span>+</span>
+                    </div>
+                    <div class="faq-answer max-h-0 overflow-hidden text-gray-400 text-sm pl-4 transition-all duration-300">
+                        Sitemizde aynı isim, adres, telefon, e-posta ve IP adresine bağlı ikinci bir hesap oluşturamazsınız. Böyle bir durumda güvenlik birimlerimiz bunu tespit ederek mevcut hesabınız da dahil olmak üzere tüm hesapları kapatacak ve yeni hesap oluşturmanıza izin vermeyecektir.
+                    </div>
+                </div>
+           </div>
+        </div>
+    </div>
+    
+    <div id="gameContainer" class="game-container hidden fixed inset-0 z-10 p-4 bg-gray-950 overflow-y-auto">
+        <div id="towerGameScreen" class="game-screen w-full flex flex-col items-center justify-center p-4">
+            <div class="card w-full max-w-lg bg-indigo-950 rounded-2xl p-6 shadow-xl flex flex-col items-center gap-4">
+                <h2 class="text-2xl font-bold text-fuchsia-300">Kule Yıkma Oyunu</h2>
+                <div id="scoreDisplay" class="text-3xl font-bold text-fuchsia-400">Skor: 0</div>
+                <canvas id="gameCanvas" width="300" height="400" class="w-full h-auto bg-gray-900 rounded-lg shadow-inner"></canvas>
+                <div class="flex flex-col gap-2 mt-4 w-full max-w-xs">
+                    <button id="startGameBtn" class="game-button w-full bg-fuchsia-600 text-white font-semibold py-3 px-6 rounded-xl shadow-lg hover:bg-fuchsia-700 transition-colors duration-200">
+                        Oyunu Başlat
+                    </button>
+                    <button id="restartGameBtn" class="game-button w-full bg-indigo-900 text-white font-semibold py-3 px-6 rounded-xl hover:bg-indigo-800 transition-colors duration-200 hidden">
+                        Yeniden Başlat
+                    </button>
+                </div>
+            </div>
+        </div>
+
+        <div id="rpsGameScreen" class="game-screen w-full flex flex-col items-center justify-center p-4 hidden">
+            <div class="card w-full max-w-lg bg-indigo-950 rounded-2xl p-6 shadow-xl flex flex-col items-center gap-4 text-center">
+                <h2 class="text-2xl font-bold text-fuchsia-300">Taş-Kağıt-Makas</h2>
+                <p class="text-gray-400 mt-2">Birini seç ve oyna:</p>
+                <div class="rps-options flex gap-4 mt-4">
+                    <button id="rockBtn" class="game-button bg-indigo-900 text-white text-3xl p-4 rounded-xl shadow-lg hover:bg-indigo-800">✊</button>
+                    <button id="paperBtn" class="game-button bg-indigo-900 text-white text-3xl p-4 rounded-xl shadow-lg hover:bg-indigo-800">✋</button>
+                    <button id="scissorsBtn" class="game-button bg-indigo-900 text-white text-3xl p-4 rounded-xl shadow-lg hover:bg-indigo-800">✌️</button>
+                </div>
+                <div id="rpsResult" class="min-h-[6rem] flex items-center justify-center text-xl text-center font-semibold mt-4 text-fuchsia-300"></div>
+                <button id="playAgainBtn" class="game-button mt-4 bg-fuchsia-600 text-white font-semibold py-3 px-6 rounded-xl shadow-lg hover:bg-fuchsia-700 transition-colors duration-200 hidden">Tekrar Oyna</button>
+            </div>
+        </div>
+
+        <div id="leaderboardCard" class="card w-full max-w-lg bg-indigo-950 rounded-2xl p-6 shadow-xl mt-4">
+            <h2 class="text-xl font-bold text-fuchsia-300 border-b-2 border-fuchsia-400 pb-2 mb-4">Liderlik Tablosu</h2>
+            <ul id="leaderboardList" class="leaderboard-list list-none p-0 space-y-2">
+                <li class="leaderboard-item flex justify-between items-center text-sm text-gray-300"><span>Yükleniyor...</span></li>
+            </ul>
+        </div>
+        
+        <button id="backToMainFromGameBtn" class="mt-4 bg-indigo-900 text-white font-semibold py-3 px-6 rounded-xl hover:bg-indigo-800 transition-colors duration-200">Geri Dön</button>
+    </div>
+
+    <div id="shopContainer" class="shop-container hidden fixed inset-0 z-10 p-4 bg-gray-950 overflow-y-auto">
+        <div class="card w-full max-w-lg bg-indigo-950 rounded-2xl p-6 shadow-xl mt-8 mx-auto">
+            <h2 class="text-2xl font-bold text-fuchsia-300 border-b-2 border-fuchsia-400 pb-2 mb-4">Ödül Mağazası</h2>
+            <div id="shopItems" class="space-y-4">
+                <!-- Ürünler buraya eklenecek -->
+            </div>
+            <p id="shopMessage" class="mt-4 text-center font-semibold"></p>
+        </div>
+        <button id="backToMainFromShopBtn" class="mt-4 w-full max-w-lg bg-indigo-900 text-white font-semibold py-3 px-6 rounded-xl hover:bg-indigo-800 transition-colors duration-200 block mx-auto">Geri Dön</button>
+    </div>
+
+    <div id="adminPanel" class="admin-container hidden fixed inset-0 z-10 p-4 bg-gray-950 overflow-y-auto">
+        <div class="card w-full max-w-lg bg-indigo-950 rounded-2xl p-6 shadow-xl mt-8 mx-auto">
+            <h2 class="text-2xl font-bold text-fuchsia-300 border-b-2 border-fuchsia-400 pb-2 mb-4">Yönetici Paneli</h2>
+            <div id="adminUserList" class="space-y-4">
+                <p class="text-gray-400">Kullanıcılar yükleniyor...</p>
+            </div>
+        </div>
+        <button id="backToMainFromAdminBtn" class="mt-4 w-full max-w-lg bg-indigo-900 text-white font-semibold py-3 px-6 rounded-xl hover:bg-indigo-800 transition-colors duration-200 block mx-auto">Geri Dön</button>
+    </div>
+
+
+    <script type="module">
+        const FIREBASE_API_KEY = "AIzaSyBnktrT7Pp7WucJP_xtEu_mmQle_VthRAE";
+        
+        // Modal UI
+        function showMessage(message, type = 'info') {
+            const modal = document.createElement('div');
+            modal.className = `fixed inset-0 z-50 flex items-center justify-center bg-black bg-opacity-70 backdrop-blur-sm p-4`;
+            
+            const content = document.createElement('div');
+            content.className = `bg-indigo-950 p-6 rounded-xl shadow-2xl text-center max-w-sm w-full`;
+            
+            const title = document.createElement('h3');
+            title.className = `text-xl font-bold mb-2 ${type === 'error' ? 'text-fuchsia-400' : 'text-fuchsia-400'}`;
+            title.textContent = type === 'error' ? 'Hata!' : 'Bilgi';
+            
+            const messageText = document.createElement('p');
+            messageText.className = `text-gray-300 text-sm mb-4`;
+            messageText.textContent = message;
+
+            const closeBtn = document.createElement('button');
+            closeBtn.className = `bg-fuchsia-600 text-white font-semibold py-2 px-4 rounded-lg hover:bg-fuchsia-700 transition-colors duration-200`;
+            closeBtn.textContent = 'Tamam';
+            closeBtn.onclick = () => modal.remove();
+
+            content.appendChild(title);
+            content.appendChild(messageText);
+            content.appendChild(closeBtn);
+            modal.appendChild(content);
+            document.body.appendChild(modal);
+        }
+
+        const db = window.db;
+        const auth = window.auth;
+        const setDoc = window.setDoc;
+        const doc = window.doc;
+        const onSnapshot = window.onSnapshot;
+        const collection = window.collection;
+        const query = window.query;
+        const where = window.where;
+        const firestore = window.firestore;
+        const WebApp = window.Telegram.WebApp;
+
         const mainContent = document.getElementById('mainContent');
         const gameContainer = document.getElementById('gameContainer');
         const shopContainer = document.getElementById('shopContainer');
         const adminPanel = document.getElementById('adminPanel');
-        const loadingIndicator = document.getElementById('loadingIndicator');
 
-        const profileIconElement = document.getElementById('profileIcon');
-        const usernameElement = document.getElementById('username');
-        const userIdElement = document.getElementById('userId');
-        const userScoreElement = document.getElementById('userScore');
-        const userBanStatus = document.getElementById('userBanStatus');
+        const playRPSBtn = document.getElementById('playRPSBtn');
+        const playTowerBtn = document.getElementById('playTowerBtn');
+        const showShopBtn = document.getElementById('showShopBtn');
         const showAdminBtn = document.getElementById('showAdminBtn');
 
-        const playTowerBtn = document.getElementById('playTowerBtn');
-        const playRPSBtn = document.getElementById('playRPSBtn');
-        const showShopBtn = document.getElementById('showShopBtn');
-        
-        // Kule Oyunu
+        const rpsGameScreen = document.getElementById('rpsGameScreen');
         const towerGameScreen = document.getElementById('towerGameScreen');
-        const gameCanvas = document.getElementById('gameCanvas');
-        const ctx = gameCanvas.getContext('2d');
-        const startGameBtn = document.getElementById('startGameBtn');
-        const restartGameBtn = document.getElementById('restartGameBtn');
-        const scoreDisplay = document.getElementById('scoreDisplay');
+        
+        const backToMainFromGameBtn = document.getElementById('backToMainFromGameBtn');
+        const backToMainFromShopBtn = document.getElementById('backToMainFromShopBtn');
+        const backToMainFromAdminBtn = document.getElementById('backToMainFromAdminBtn');
+
+        const faqItems = document.querySelectorAll('.faq-item');
+        faqItems.forEach(item => {
+            item.addEventListener('click', () => {
+                item.classList.toggle('active');
+                const answer = item.querySelector('.faq-answer');
+                answer.style.maxHeight = item.classList.contains('active') ? `${answer.scrollHeight}px` : '0';
+            });
+        });
+
+        // Yönetici ID'lerinizi buraya girin. Kendi Telegram ID'lerinizi ve diğer yöneticilerin ID'lerini ekleyin.
+        // Örnek: const ADMIN_IDS = ["123456789", "987654321", "1122334455"];
+        const ADMIN_IDS = ["6817203711", "YOUR_ADMIN_TELEGRAM_ID_2", "YOUR_ADMIN_TELEGRAM_ID_3"];
+
+        let isUserBanned = false;
+        
+        // Ekran görünürlüğünü yönetme
+        function showScreen(screen) {
+            mainContent.classList.add('hidden');
+            gameContainer.classList.add('hidden');
+            shopContainer.classList.add('hidden');
+            adminPanel.classList.add('hidden');
+
+            if (screen === 'main') {
+                mainContent.classList.remove('hidden');
+            } else if (screen === 'tower') {
+                gameContainer.classList.remove('hidden');
+                rpsGameScreen.classList.add('hidden');
+                towerGameScreen.classList.remove('hidden');
+                initializeTowerGame();
+            } else if (screen === 'rps') {
+                gameContainer.classList.remove('hidden');
+                towerGameScreen.classList.add('hidden');
+                rpsGameScreen.classList.remove('hidden');
+                resetRPSGame();
+            } else if (screen === 'shop') {
+                shopContainer.classList.remove('hidden');
+            } else if (screen === 'admin') {
+                adminPanel.classList.remove('hidden');
+                renderAdminPanel();
+            }
+        }
+
+        // Firebase Auth durumu dinleme
+        auth.onAuthStateChanged(user => {
+            if (user) {
+                const userDocRef = doc(db, "users", user.uid);
+                onSnapshot(userDocRef, (docSnap) => {
+                    if (docSnap.exists()) {
+                        const userData = docSnap.data();
+                        isUserBanned = userData.isBanned || false;
+                        if (isUserBanned) {
+                            showMessage('Hesabınız yasaklanmıştır. Lütfen yönetici ile iletişime geçin.', 'error');
+                        }
+                        // Admin butonu görünür mü kontrol et
+                        if (ADMIN_IDS.includes(user.uid)) {
+                            showAdminBtn.style.display = 'block';
+                        }
+                    }
+                });
+
+                const userScoreRef = doc(db, "scores", user.uid);
+                onSnapshot(userScoreRef, (docSnap) => {
+                    const scoreData = docSnap.data();
+                    const totalScore = scoreData ? (scoreData.score || 0) : 0;
+                    document.getElementById('userScore').textContent = `${totalScore} Puan`;
+                });
+
+                loadLeaderboard();
+                renderShopItems();
+            } else {
+                console.log("Kullanıcı oturumu açılmamış.");
+            }
+        });
+
+        // OYUN KODLARI BURADA BAŞLAR
+
+        const canvas = document.getElementById('gameCanvas');
+        const ctx = canvas.getContext('2d');
         const BLOCK_HEIGHT = 40;
-        const MAX_SCORE = 100;
         let BLOCK_WIDTH = 150;
         let blockSpeed = 3;
         let gameStarted = false;
@@ -206,196 +460,31 @@
         let currentBlock = null;
         let animationFrameId;
         let yOffset = 0;
+        const MAX_SCORE = 100;
 
-        // Taş-Kağıt-Makas Oyunu
-        const rpsGameScreen = document.getElementById('rpsGameScreen');
-        const rpsButtons = {
-            rockBtn: document.getElementById('rockBtn'),
-            paperBtn: document.getElementById('paperBtn'),
-            scissorsBtn: document.getElementById('scissorsBtn')
-        };
-        const rpsResultDisplay = document.getElementById('rpsResult');
-        const playAgainBtn = document.getElementById('playAgainBtn');
+        const scoreDisplay = document.getElementById('scoreDisplay');
+        const startGameBtn = document.getElementById('startGameBtn');
+        const restartGameBtn = document.getElementById('restartGameBtn');
 
-        // Ödül Mağazası
-        const shopItemsContainer = document.getElementById('shopItems');
-        const shopMessage = document.getElementById('shopMessage');
-        
-        // Yönetici Paneli
-        const adminUserList = document.getElementById('adminUserList');
-
-        // Modal
-        const modal = document.getElementById('modal');
-        const modalTitle = document.getElementById('modalTitle');
-        const modalMessage = document.getElementById('modalMessage');
-        const modalConfirm = document.getElementById('modalConfirm');
-        const modalCancel = document.getElementById('modalCancel');
-
-        // Modal'ı gösteren fonksiyon
-        function showModal(title, message, isConfirm = false) {
-            return new Promise(resolve => {
-                modalTitle.textContent = title;
-                modalMessage.textContent = message;
-                modal.classList.remove('hidden');
-                modal.classList.add('flex');
-                
-                if (isConfirm) {
-                    modalConfirm.classList.remove('hidden');
-                    modalCancel.classList.remove('hidden');
-                } else {
-                    modalConfirm.classList.add('hidden');
-                    modalCancel.classList.add('hidden');
-                }
-                
-                const confirmListener = () => {
-                    modal.classList.add('hidden');
-                    modal.classList.remove('flex');
-                    resolve(true);
-                    modalConfirm.removeEventListener('click', confirmListener);
-                    modalCancel.removeEventListener('click', cancelListener);
-                };
-                
-                const cancelListener = () => {
-                    modal.classList.add('hidden');
-                    modal.classList.remove('flex');
-                    resolve(false);
-                    modalConfirm.removeEventListener('click', confirmListener);
-                    modalCancel.removeEventListener('click', cancelListener);
-                };
-
-                modalConfirm.addEventListener('click', confirmListener);
-                modalCancel.addEventListener('click', cancelListener);
-
-                if (!isConfirm) {
-                    setTimeout(() => {
-                        modal.classList.add('hidden');
-                        modal.classList.remove('flex');
-                        resolve(false);
-                        modalConfirm.removeEventListener('click', confirmListener);
-                        modalCancel.removeEventListener('click', cancelListener);
-                    }, 3000);
-                }
-            });
-        }
-        
-        // Ekran yönetim fonksiyonu
-        function showScreen(screen) {
-            mainContent.classList.add('hidden');
-            gameContainer.classList.add('hidden');
-            shopContainer.classList.add('hidden');
-            adminPanel.classList.add('hidden');
-            towerGameScreen.classList.add('hidden');
-            rpsGameScreen.classList.add('hidden');
-            
-            if (screen === 'main') {
-                mainContent.classList.remove('hidden');
-            } else if (screen === 'tower') {
-                towerGameScreen.classList.remove('hidden');
-                gameContainer.classList.remove('hidden');
-                initializeTowerGame();
-            } else if (screen === 'rps') {
-                rpsGameScreen.classList.remove('hidden');
-                gameContainer.classList.remove('hidden');
-                resetRPSGame();
-            } else if (screen === 'shop') {
-                shopContainer.classList.remove('hidden');
-                renderShopItems();
-            } else if (screen === 'admin') {
-                adminPanel.classList.remove('hidden');
-                renderAdminPanel();
-            }
-        }
-
-        // --- Firebase ve Kullanıcı Yönetimi ---
-        async function initializeFirebase() {
-            try {
-                const app = initializeApp(__firebase_config);
-                db = getFirestore(app);
-                auth = getAuth(app);
-                
-                const token = __initial_auth_token;
-                if (token) {
-                    await signInWithCustomToken(auth, token);
-                } else {
-                    await signInAnonymously(auth);
-                }
-
-                const user = auth.currentUser;
-                const telegramWebApp = window.Telegram.WebApp.initDataUnsafe.user;
-                if (user && telegramWebApp) {
-                    const userId = telegramWebApp.id.toString();
-                    const userRef = doc(db, `artifacts/${__app_id}/users/${userId}`);
-                    await setDoc(userRef, {
-                        first_name: telegramWebApp.first_name,
-                        last_name: telegramWebApp.last_name || null,
-                        username: telegramWebApp.username || null,
-                        last_login: new Date().toISOString(),
-                    }, { merge: true });
-
-                    currentUserTelegramId = userId;
-                    currentUserName = telegramWebApp.first_name || 'Kullanıcı';
-
-                    // Kullanıcı verilerini dinle
-                    onSnapshot(userRef, (userDoc) => {
-                        const userData = userDoc.data();
-                        isUserBanned = userData?.is_banned || false;
-                        if (isUserBanned) {
-                            userBanStatus.classList.remove('hidden');
-                            showModal("Uyarı", "Hesabınız yasaklanmıştır.");
-                        } else {
-                            userBanStatus.classList.add('hidden');
-                        }
-                    });
-                    
-                    // Puanları dinle
-                    const scoreRef = doc(db, `artifacts/${__app_id}/users/${userId}/data/scores/tower`);
-                    onSnapshot(scoreRef, (scoreDoc) => {
-                        const scoreData = scoreDoc.data();
-                        userScoreElement.textContent = `${scoreData?.score || 0} Puan`;
-                    });
-
-                    // Admin kontrolü
-                    if (ADMIN_IDS.includes(currentUserTelegramId)) {
-                        showAdminBtn.classList.remove('hidden');
-                    }
-                } else {
-                    usernameElement.textContent = 'Kullanıcı verisi alınamadı.';
-                    userIdElement.textContent = 'Lütfen uygulamayı Telegram içinden açın.';
-                }
-                loadingIndicator.classList.add('hidden');
-                updateUI();
-                loadLeaderboard();
-            } catch (e) {
-                console.error("Firebase başlatma hatası:", e);
-                loadingIndicator.textContent = 'Veri yüklenirken bir hata oluştu.';
-            }
-        }
-        
-        function updateUI() {
-            usernameElement.textContent = currentUserName;
-            userIdElement.textContent = `@${window.Telegram.WebApp.initDataUnsafe.user?.username || 'ID: ' + currentUserTelegramId}`;
-            profileIconElement.textContent = currentUserName.charAt(0).toUpperCase();
-        }
-
-        // --- Kule Yıkma Oyunu Fonksiyonları ---
         function getColorForScore(score) {
-            const colors = ['#9b59b6', '#8e44ad', '#3498db', '#2980b9', '#f1c40f', '#f39c12', '#e74c3c', '#c0392b'];
-            return colors[score % colors.length];
+            const hue = (score * 3) % 360;
+            // Mor ve pembe tonları arasında bir geçiş
+            return `hsl(${300 + hue/2}, ${80 - hue/4}%, ${50 + hue/8}%)`;
         }
 
         function drawBlock(block) {
             ctx.fillStyle = block.color;
-            ctx.fillRect(block.x, gameCanvas.height - block.y - BLOCK_HEIGHT + yOffset, block.width, BLOCK_HEIGHT);
+            ctx.fillRect(block.x, canvas.height - block.y - BLOCK_HEIGHT + yOffset, block.width, BLOCK_HEIGHT);
             
             ctx.fillStyle = 'white';
-            ctx.font = 'bold 24px Arial';
+            ctx.font = 'bold 24px Inter';
             ctx.textAlign = 'center';
             ctx.textBaseline = 'middle';
-            ctx.fillText('ONWIN', block.x + block.width / 2, gameCanvas.height - block.y - BLOCK_HEIGHT / 2 + yOffset);
+            ctx.fillText('ONWIN', block.x + block.width / 2, canvas.height - block.y - BLOCK_HEIGHT / 2 + yOffset);
         }
 
         function drawGame() {
-            ctx.clearRect(0, 0, gameCanvas.width, gameCanvas.height);
+            ctx.clearRect(0, 0, canvas.width, canvas.height);
             tower.forEach(block => drawBlock(block));
             if (currentBlock && gameStarted) {
                 drawBlock(currentBlock);
@@ -405,16 +494,16 @@
         function animate() {
             if (!gameStarted || !currentBlock) return;
             currentBlock.x += currentBlock.speed;
-            if (currentBlock.x + currentBlock.width > gameCanvas.width || currentBlock.x < 0) {
+            if (currentBlock.x + currentBlock.width > canvas.width || currentBlock.x < 0) {
                 currentBlock.speed *= -1;
             }
             drawGame();
             animationFrameId = requestAnimationFrame(animate);
         }
 
-        async function placeBlock() {
+        function placeBlock() {
             if (isUserBanned) {
-                 showModal("Yasaklı", "Yasaklı olduğunuz için oyun oynayamazsınız.");
+                showMessage('Yasaklı olduğunuz için oyun oynayamazsınız.', 'error');
                 return;
             }
             if (!gameStarted || !currentBlock) return;
@@ -427,6 +516,19 @@
                 score++;
                 scoreDisplay.textContent = `Skor: ${score}`;
 
+                if (score % 10 === 0 && score < MAX_SCORE) {
+                    blockSpeed += 0.2;
+                }
+
+                if (score % 10 === 0 && auth.currentUser) {
+                    const userScoreRef = doc(db, "scores", auth.currentUser.uid);
+                    getDoc(userScoreRef).then(docSnap => {
+                        const currentScore = docSnap.data()?.score || 0;
+                        setDoc(userScoreRef, { score: currentScore + 15 }, { merge: true });
+                    });
+                }
+
+
                 const newWidth = overlap;
                 const newX = currentBlock.x > previousBlock.x ? currentBlock.x : previousBlock.x;
                 const newBlock = {
@@ -437,7 +539,7 @@
                 };
                 tower.push(newBlock);
 
-                if (tower.length > 3) {
+                if (tower.length * BLOCK_HEIGHT > canvas.height / 2) {
                     yOffset += BLOCK_HEIGHT;
                 }
 
@@ -446,14 +548,20 @@
                     scoreDisplay.textContent = `Tebrikler! Maksimum Skor: ${MAX_SCORE}`;
                     startGameBtn.classList.add('hidden');
                     restartGameBtn.classList.remove('hidden');
-                    addPoints(currentUserTelegramId, 500);
+
+                    if (auth.currentUser) {
+                         const scoreRef = doc(db, "scores", auth.currentUser.uid);
+                         getDoc(scoreRef).then(docSnap => {
+                            setDoc(scoreRef, { score: (docSnap.data()?.score || 0) + 500 }, { merge: true });
+                         });
+                    }
                     return;
                 }
 
                 BLOCK_WIDTH = newWidth;
                 const newDirection = Math.random() < 0.5 ? 1 : -1;
                 currentBlock = {
-                    x: newDirection > 0 ? 0 : gameCanvas.width - BLOCK_WIDTH,
+                    x: newDirection > 0 ? 0 : canvas.width - BLOCK_WIDTH,
                     y: (tower.length) * BLOCK_HEIGHT,
                     width: BLOCK_WIDTH,
                     color: getColorForScore(score),
@@ -465,35 +573,20 @@
                 scoreDisplay.textContent = `Oyun Bitti! Skor: ${score}`;
                 startGameBtn.classList.add('hidden');
                 restartGameBtn.classList.remove('hidden');
-                await saveScore(score);
+                if (auth.currentUser) {
+                    const userScoreRef = doc(db, "scores", auth.currentUser.uid);
+                    getDoc(userScoreRef).then(docSnap => {
+                        setDoc(userScoreRef, { score: (docSnap.data()?.score || 0) + score }, { merge: true });
+                    });
+                }
             }
         }
-
-        async function saveScore(finalScore) {
-            if (!currentUserTelegramId) {
-                console.warn("Kullanıcı girişi yapılmamış, puan kaydedilmedi.");
+        
+        function initializeTowerGame() {
+            if (isUserBanned) {
+                showMessage('Yasaklı olduğunuz için oyun oynayamazsınız.', 'error');
                 return;
             }
-
-            const scoreRef = doc(db, `artifacts/${__app_id}/users/${currentUserTelegramId}/data/scores/tower`);
-            const docSnap = await getDoc(scoreRef);
-            const currentHighScore = docSnap.data()?.score || 0;
-            
-            if (finalScore > currentHighScore) {
-                await setDoc(scoreRef, { score: finalScore });
-            }
-            await addPoints(currentUserTelegramId, finalScore);
-        }
-
-        async function addPoints(userId, points) {
-            const scoreRef = doc(db, `artifacts/${__app_id}/users/${userId}/data/scores/tower`);
-            const docSnap = await getDoc(scoreRef);
-            const currentScore = docSnap.data()?.score || 0;
-            await setDoc(scoreRef, { score: currentScore + points }, { merge: true });
-            loadLeaderboard();
-        }
-
-        function initializeTowerGame() {
             gameStarted = true;
             score = 0;
             tower = [];
@@ -504,12 +597,11 @@
             scoreDisplay.textContent = `Skor: ${score}`;
             startGameBtn.classList.add('hidden');
             restartGameBtn.classList.add('hidden');
-            gameCanvas.classList.remove('hidden');
 
-            tower.push({ x: (gameCanvas.width - BLOCK_WIDTH) / 2, y: 0, width: BLOCK_WIDTH, color: getColorForScore(0) }); 
+            tower.push({ x: (canvas.width - BLOCK_WIDTH) / 2, y: 0, width: BLOCK_WIDTH, color: getColorForScore(0) }); 
             const newDirection = Math.random() < 0.5 ? 1 : -1;
             currentBlock = { 
-                x: newDirection > 0 ? 0 : gameCanvas.width - BLOCK_WIDTH, 
+                x: newDirection > 0 ? 0 : canvas.width - BLOCK_WIDTH, 
                 y: BLOCK_HEIGHT, 
                 width: BLOCK_WIDTH, 
                 color: getColorForScore(0), 
@@ -519,10 +611,27 @@
             animate();
         }
 
-        // --- Taş-Kağıt-Makas Oyunu Fonksiyonları ---
+        startGameBtn.addEventListener('click', initializeTowerGame);
+        restartGameBtn.addEventListener('click', initializeTowerGame);
+        canvas.addEventListener('click', placeBlock);
+        canvas.addEventListener('touchstart', (e) => {
+            e.preventDefault();
+            placeBlock();
+        });
+
+
+        const rpsChoices = ['✊ Taş', '✋ Kağıt', '✌️ Makas'];
+        const rpsButtons = {
+            rockBtn: document.getElementById('rockBtn'),
+            paperBtn: document.getElementById('paperBtn'),
+            scissorsBtn: document.getElementById('scissorsBtn')
+        };
+        const rpsResultDisplay = document.getElementById('rpsResult');
+        const playAgainBtn = document.getElementById('playAgainBtn');
+
         function playRPS(userChoice) {
             if (isUserBanned) {
-                 showModal("Yasaklı", "Yasaklı olduğunuz için oyun oynayamazsınız.");
+                showMessage('Yasaklı olduğunuz için oyun oynayamazsınız.', 'error');
                 return;
             }
             rpsButtons.rockBtn.disabled = true;
@@ -530,98 +639,75 @@
             rpsButtons.scissorsBtn.disabled = true;
             
             const botChoice = rpsChoices[Math.floor(Math.random() * 3)];
-            let resultText;
-            
-            const rand = Math.random();
-            let pointsEarned = 0;
-            
-            if (rand < 0.4) {
+            let resultText = '';
+            let points = 0;
+
+            if (userChoice === botChoice) {
+                resultText = `Senin seçimin: ${userChoice} | Rakibin seçimi: ${botChoice} | Sonuç: Berabere!`;
+            } else if (
+                (userChoice === '✊ Taş' && botChoice === '✌️ Makas') ||
+                (userChoice === '✋ Kağıt' && botChoice === '✊ Taş') ||
+                (userChoice === '✌️ Makas' && botChoice === '✋ Kağıt')
+            ) {
                 resultText = `Senin seçimin: ${userChoice} | Rakibin seçimi: ${botChoice} | Sonuç: Kazandın! (+10 Puan)`;
-                pointsEarned = 10;
+                points = 10;
             } else {
-                if (userChoice === botChoice) {
-                    resultText = `Senin seçimin: ${userChoice} | Rakibin seçimi: ${botChoice} | Sonuç: Berabere!`;
-                } else if (
-                    (userChoice === 'taş' && botChoice === 'kağıt') ||
-                    (userChoice === 'kağıt' && botChoice === 'makas') ||
-                    (userChoice === 'makas' && botChoice === 'taş')
-                ) {
-                    resultText = `Senin seçimin: ${userChoice} | Rakibin seçimi: ${botChoice} | Sonuç: Kaybettin!`;
-                } else {
-                    resultText = `Senin seçimin: ${userChoice} | Rakibin seçimi: ${botChoice} | Sonuç: Kazandın! (+10 Puan)`;
-                    pointsEarned = 10;
-                }
+                resultText = `Senin seçimin: ${userChoice} | Rakibin seçimi: ${botChoice} | Sonuç: Kaybettin!`;
             }
 
-            rpsResultDisplay.textContent = resultText;
-            playAgainBtn.classList.remove('hidden');
-            if (pointsEarned > 0) {
-                addPoints(currentUserTelegramId, pointsEarned);
+            if (points > 0 && auth.currentUser) {
+                 const userScoreRef = doc(db, "scores", auth.currentUser.uid);
+                 getDoc(userScoreRef).then(docSnap => {
+                     setDoc(userScoreRef, { score: (docSnap.data()?.score || 0) + points }, { merge: true });
+                 });
             }
+
+            rpsResultDisplay.innerHTML = resultText;
+            playAgainBtn.classList.remove('hidden');
         }
         
         function resetRPSGame() {
-            rpsResultDisplay.textContent = '';
+            rpsResultDisplay.innerHTML = '';
             rpsButtons.rockBtn.disabled = false;
             rpsButtons.paperBtn.disabled = false;
             rpsButtons.scissorsBtn.disabled = false;
             playAgainBtn.classList.add('hidden');
         }
 
-        // --- Liderlik Tablosu ---
-        function loadLeaderboard() {
-            const leaderboardList = document.getElementById('leaderboardList');
-            const scoresColRef = collection(db, `artifacts/${__app_id}/users/${currentUserTelegramId}/data/scores`);
-            
-            onSnapshot(scoresColRef, async (querySnapshot) => {
-                const leaderboardItems = [];
-                for (const docSnap of querySnapshot.docs) {
-                    const userId = docSnap.id;
-                    const scoreData = docSnap.data();
-                    const userRef = doc(db, `artifacts/${__app_id}/users/${userId}`);
-                    const userDoc = await getDoc(userRef);
-                    if (userDoc.exists()) {
-                        const userData = userDoc.data();
-                        leaderboardItems.push({
-                            username: userData.first_name || 'Anonim',
-                            score: scoreData.score || 0,
-                        });
-                    }
-                }
-
-                leaderboardItems.sort((a, b) => b.score - a.score);
-                leaderboardList.innerHTML = '';
-                if (leaderboardItems.length === 0) {
-                    leaderboardList.innerHTML = '<li class="text-gray-400">Henüz skor yok.</li>';
-                } else {
-                    leaderboardItems.forEach((item, index) => {
-                        const li = document.createElement('li');
-                        li.className = 'flex justify-between items-center text-sm font-semibold text-gray-300';
-                        li.innerHTML = `
-                            <span class="text-purple-400">${index + 1}.</span>
-                            <span>${item.username}</span>
-                            <span class="text-green-400">${item.score}</span>
-                        `;
-                        leaderboardList.appendChild(li);
-                    });
-                }
-            });
-        }
+        rpsButtons.rockBtn.addEventListener('click', () => playRPS('✊ Taş'));
+        rpsButtons.paperBtn.addEventListener('click', () => playRPS('✋ Kağıt'));
+        rpsButtons.scissorsBtn.addEventListener('click', () => playRPS('✌️ Makas'));
+        playAgainBtn.addEventListener('click', resetRPSGame);
         
-        // --- Ödül Mağazası ---
+        // Ödül Mağazası Ürünleri
+        const shopProducts = [
+            { id: '1', name: 'Özel Kullanıcı Rozeti', price: 1000, description: 'Telegram profilinizde kullanabileceğiniz nadir bir rozet.' },
+            { id: '2', name: 'Tek kullanımlık 250 Puan', price: 500, description: 'Oyun içinde kullanabileceğiniz 250 bonus puan.' },
+            { id: '3', name: 'Sınırsız Oyun Hakkı', price: 2000, description: 'Sınırlı süreliğine oyun hakkınızı yeniler.' },
+            { id: '4', name: 'Şanslı Kutu', price: 750, description: 'İçinden rastgele miktarda puan veya sürpriz ödül çıkar.' }
+        ];
+
         function renderShopItems() {
+            const shopItemsContainer = document.getElementById('shopItems');
             shopItemsContainer.innerHTML = '';
+            
+            // Eğer ürün listesi boşsa mesaj göster
+            if (shopProducts.length === 0) {
+                 shopItemsContainer.innerHTML = '<p class="text-gray-400 text-center">Şu an mağazada ürün bulunmamaktadır.</p>';
+                 return;
+            }
+
             shopProducts.forEach(item => {
                 const itemDiv = document.createElement('div');
-                itemDiv.className = 'bg-gray-700 rounded-xl p-4 flex flex-col space-y-2';
+                itemDiv.className = 'shop-item bg-indigo-900 rounded-xl p-4 shadow-lg flex flex-col gap-3';
                 itemDiv.innerHTML = `
-                    <h3 class="font-bold text-lg text-purple-400">${item.name}</h3>
-                    <p class="text-gray-300 text-sm">${item.description}</p>
-                    <div class="flex items-center space-x-2 text-green-400 font-bold">
-                        <span>⭐</span>
+                    <h3 class="text-lg font-semibold text-fuchsia-300">${item.name}</h3>
+                    <p class="text-gray-400 text-sm">${item.description}</p>
+                    <div class="item-price font-bold text-fuchsia-400 flex items-center gap-1">
                         <span>${item.price}</span>
+                        <span>⭐</span>
                     </div>
-                    <button class="w-full py-2 bg-purple-600 hover:bg-purple-700 text-white font-bold rounded-lg transition-colors duration-300" data-item-id="${item.id}">Satın Al</button>
+                    <button class="buy-btn bg-fuchsia-600 text-white font-semibold py-2 px-4 rounded-lg hover:bg-fuchsia-700 transition-colors duration-200" data-item-id="${item.id}" data-item-price="${item.price}">Satın Al</button>
                 `;
                 shopItemsContainer.appendChild(itemDiv);
             });
@@ -629,179 +715,169 @@
             document.querySelectorAll('.buy-btn').forEach(button => {
                 button.addEventListener('click', (e) => {
                     const itemId = e.target.dataset.itemId;
-                    const item = shopProducts.find(p => p.id === itemId);
-                    if (item) {
-                        buyItem(item.price);
-                    }
+                    const itemPrice = parseInt(e.target.dataset.itemPrice);
+                    buyItem(itemPrice);
                 });
             });
         }
         
-        async function buyItem(itemPrice) {
+        function buyItem(itemPrice) {
             if (isUserBanned) {
-                showModal("Yasaklı", "Yasaklı olduğunuz için işlem yapamazsınız.");
-                return;
+                 showMessage('Yasaklı olduğunuz için işlem yapamazsınız.', 'error');
+                 return;
             }
-            const scoreRef = doc(db, `artifacts/${__app_id}/users/${currentUserTelegramId}/data/scores/tower`);
-            const docSnap = await getDoc(scoreRef);
-            const currentScore = docSnap.data()?.score || 0;
-            
-            if (currentScore >= itemPrice) {
-                await updateDoc(scoreRef, { score: currentScore - itemPrice });
-                showModal("Başarılı", "Satın alma başarılı! Puanınız düşüldü.");
-                renderShopItems();
-            } else {
-                showModal("Yetersiz Puan", "Yetersiz puan. Lütfen daha fazla puan toplayın!");
+            if (auth.currentUser) {
+                const userScoreRef = doc(db, "scores", auth.currentUser.uid);
+                getDoc(userScoreRef).then(docSnap => {
+                    const currentScore = docSnap.data()?.score || 0;
+                    if (currentScore >= itemPrice) {
+                        const newScore = currentScore - itemPrice;
+                        setDoc(userScoreRef, { score: newScore }, { merge: true }).then(() => {
+                            showMessage('Satın alma başarılı! Puanınız düşüldü.', 'success');
+                        }).catch(error => {
+                            console.error("Error updating score:", error);
+                            showMessage('İşlem sırasında bir hata oluştu.', 'error');
+                        });
+                    } else {
+                        showMessage('Yetersiz puan. Lütfen daha fazla puan toplayın!', 'error');
+                    }
+                }).catch(error => {
+                    console.error("Error fetching user score:", error);
+                    showMessage('Puanınız yüklenirken bir hata oluştu.', 'error');
+                });
             }
         }
         
-        // --- Yönetici Paneli ---
-        async function renderAdminPanel() {
-            adminUserList.innerHTML = '<p class="text-center text-gray-400">Kullanıcılar yükleniyor...</p>';
-            try {
-                const usersColRef = collection(db, `artifacts/${__app_id}/users`);
-                const scoresColRef = collection(db, `artifacts/${__app_id}/users/${currentUserTelegramId}/data/scores`);
+        // Yönetici paneli fonksiyonları
+        function renderAdminPanel() {
+            const adminUserList = document.getElementById('adminUserList');
+            adminUserList.innerHTML = '<p class="text-gray-400">Kullanıcılar yükleniyor...</p>';
+            
+            const usersRef = collection(db, "users");
+            const scoresRef = collection(db, "scores");
+            
+            // Kullanıcı ve skor verilerini tek bir sorguda alıyoruz
+            onSnapshot(collection(db, "users"), (userSnapshot) => {
+                onSnapshot(collection(db, "scores"), (scoreSnapshot) => {
+                    const users = {};
+                    userSnapshot.forEach(doc => users[doc.id] = doc.data());
 
-                const usersSnapshot = await getDocs(usersColRef);
-                const scoresSnapshot = await getDocs(scoresColRef);
-                const scoresMap = {};
-                scoresSnapshot.forEach(doc => {
-                    scoresMap[doc.id] = doc.data().score || 0;
-                });
+                    const scores = {};
+                    scoreSnapshot.forEach(doc => scores[doc.id] = doc.data().score);
+
+                    adminUserList.innerHTML = '';
                 
-                adminUserList.innerHTML = '';
-                usersSnapshot.forEach(userDoc => {
-                    const userData = userDoc.data();
-                    const userId = userDoc.id;
-                    const userScore = scoresMap[userId] || 0;
-                    const isBanned = userData.is_banned || false;
-                    
-                    const userItem = document.createElement('div');
-                    userItem.className = 'bg-gray-700 rounded-lg p-4 space-y-2';
-                    userItem.innerHTML = `
-                        <div class="text-sm">
-                            <span class="font-bold text-purple-400">Ad:</span> ${userData.first_name || 'Bilinmiyor'} (@${userData.username || 'N/A'})<br>
-                            <span class="font-bold text-purple-400">ID:</span> ${userId}<br>
-                            <span class="font-bold text-purple-400">Puan:</span> ${userScore} ${isBanned ? '<span class="text-red-500">(Yasaklı)</span>' : ''}
-                        </div>
-                        <div class="flex flex-col sm:flex-row space-y-2 sm:space-y-0 sm:space-x-2 mt-2">
-                            <input type="number" class="score-input w-full sm:w-auto p-2 rounded-lg bg-gray-800 text-gray-100 border border-gray-600 focus:outline-none focus:border-purple-400" placeholder="Yeni puan">
-                            <button class="update-score-btn w-full sm:w-auto py-2 px-4 bg-purple-600 hover:bg-purple-700 text-white rounded-lg" data-user-id="${userId}">Puan Güncelle</button>
-                            <button class="reset-score-btn w-full sm:w-auto py-2 px-4 bg-gray-600 hover:bg-gray-700 text-white rounded-lg" data-user-id="${userId}">Puan Sıfırla</button>
-                            <button class="ban-btn w-full sm:w-auto py-2 px-4 bg-red-600 hover:bg-red-700 text-white rounded-lg" data-user-id="${userId}">${isBanned ? 'Yasağı Kaldır' : 'Yasakla'}</button>
-                        </div>
-                    `;
-                    adminUserList.appendChild(userItem);
-                });
-
-                document.querySelectorAll('.update-score-btn').forEach(btn => {
-                    btn.addEventListener('click', async (e) => {
-                        const userId = e.target.dataset.userId;
-                        const newScore = parseInt(e.target.closest('.user-actions, div').querySelector('.score-input').value);
-                        if (!isNaN(newScore)) {
-                            await setDoc(doc(db, `artifacts/${__app_id}/users/${userId}/data/scores/tower`), { score: newScore });
-                            showModal("Başarılı", "Puan güncellendi.");
-                            renderAdminPanel();
-                        }
-                    });
-                });
-                
-                document.querySelectorAll('.reset-score-btn').forEach(btn => {
-                    btn.addEventListener('click', async (e) => {
-                        const userId = e.target.dataset.userId;
-                        await setDoc(doc(db, `artifacts/${__app_id}/users/${userId}/data/scores/tower`), { score: 0 });
-                        showModal("Başarılı", "Puan sıfırlandı.");
-                        renderAdminPanel();
-                    });
-                });
-                
-                document.querySelectorAll('.ban-btn').forEach(btn => {
-                    btn.addEventListener('click', async (e) => {
-                        const userId = e.target.dataset.userId;
-                        const isCurrentlyBanned = btn.textContent.includes('Yasakla') ? false : true;
-                        await updateDoc(doc(db, `artifacts/${__app_id}/users/${userId}`), { is_banned: !isCurrentlyBanned });
-                        showModal("Başarılı", isCurrentlyBanned ? "Yasak kaldırıldı." : "Kullanıcı yasaklandı.");
-                        renderAdminPanel();
-                    });
-                });
-            } catch (error) {
-                adminUserList.innerHTML = '<p class="text-center text-red-400">Kullanıcı verileri yüklenirken hata oluştu.</p>';
-                console.error("Yönetici paneli yükleme hatası:", error);
-            }
-        }
-
-        // --- FAQ Fonksiyonları ---
-        const faqData = [
-            { question: "Nasıl Hesap Açabilirim?", answer: "Üye Ol [Kayıt] butonuna tıkladığınızda çıkan kayıt formunu doldurarak kolayca hesap oluşturabilirsiniz. Kayıt sırasında girdiğiniz e-posta adresinizi doğrulamanız gerekmektedir. Adresinizi doğruladığınızda kayıt işlemi de tamamlanacaktır." },
-            { question: "Neden Hesap Açamıyorum?", answer: "Daha önce adınıza, e-posta adresinize, telefonunuza, adres bilgilerinize veya IP bilgilerinize kayıtlı bir hesabınız varsa, sistem yeni bir hesap oluşturmanıza izin vermeyecektir. Bu durumda bilgilerinizle birlikte ve sorunu anlatan bir e-posta göndererek müşteri hizmetleri temsilcilerimizden yardım alabilirsiniz." },
-            { question: "Botu kullanmak güvenli mi?", answer: "Evet, botumuz kişisel bilgilerinizi korumak için tasarlanmıştır. Bot, size sadece güncel fırsatları sunar ve kişisel banka bilgilerinize erişemez." },
-            { question: "ONWIN’e kayıt olmakla herhangi bir yükümlülük üstleniyor muyum?", answer: "Hayır. Siteye kaydınız tamamen bağlayıcılıktan uzaktır ve düzenli olarak para yatırmak veya bahis oynamak mecburiyetiniz yoktur. Bununla birlikte kayıt olmak suretiyle Genel Şirket Şartnamemizi kabul etmiş olursunuz." },
-            { question: "Hesabımı Tamamen Nasıl Kapatabilirim?", answer: "Üyelikten ayrılmanızı istemeyiz fakat hesabınızı kapatmak isterseniz yapmanız gereken, kapatma talebinizi nedeniyle birlikte e-posta olarak iletmeniz. En kısa sürede size dönüş yapılarak hesap kapatma işlemi gerçekleştirilecektir." },
-            { question: "Şifremi Unuttum, Ne Yapmalıyım?", answer: "Şifrenizi unuttuysanız üst menüde en sağda yer alan soru işaretine tıklayarak yeni bir şifre talep edebilirsiniz. Bu işlem için e-posta adresinizi veya cep telefonu numaranızı kullanabilirsiniz. Ardından geçici bir şifre kayıtlı e-posta adresinize gönderilir." },
-            { question: "Bonusu nasıl çekebilirim?", answer: "Verilen bonus tutarının çekilebilmesi için belirli koşulları yerine getirmeniz gereklidir. Bonusun türüne bağlı olarak kazancınızı veya bahis koşullarını yerine getirerek bonus için hesabınıza yatırdığınız tutarı çekebilirsiniz. Bonuslar, kampanya kural ve şartlarına bağlı olarak bazen oyun oynandıktan önce (çekilmesi kısıtlı bonuslar), bazende oyunlara katıldıktan ve bahis koşulları tümüyle yerine getirildikten sonra oyuncuların hesaplarına işlenir." },
-            { question: "Hesabımı doğrulamak zorunda mıyım?", answer: "Çevrimiçi oyun kuralları uyarınca, yaşı uygun olmayan kişilerin sitemizde oynamadıklarından emin olmak için kimliğinizi ve yaşınızı doğrulamak zorundayız." },
-            { question: "Birden fazla hesap açabilir miyim?", answer: "Sitemizde aynı isim, adres, telefon, e-posta ve IP adresine bağlı ikinci bir hesap oluşturamazsınız. Böyle bir durumda güvenlik birimlerimiz bunu tespit ederek mevcut hesabınız da dahil olmak üzere tüm hesapları kapatacak ve yeni hesap oluşturmanıza izin vermeyecektir." },
-        ];
-
-        function renderFAQ() {
-            const faqContainer = document.getElementById('faqContainer');
-            faqContainer.innerHTML = '';
-            faqData.forEach((item, index) => {
-                const div = document.createElement('div');
-                div.className = 'border-b border-gray-700 py-4 cursor-pointer transition-colors duration-200 hover:bg-gray-700 px-2 rounded-lg';
-                div.innerHTML = `
-                    <div class="flex justify-between items-center text-purple-400 font-semibold">
-                        <span>${item.question}</span>
-                        <span>+</span>
-                    </div>
-                    <div class="faq-answer max-h-0 overflow-hidden text-gray-400 mt-2 transition-max-height duration-500 ease-in-out">
-                        ${item.answer}
-                    </div>
-                `;
-                div.addEventListener('click', () => {
-                    const answer = div.querySelector('.faq-answer');
-                    if (answer.style.maxHeight) {
-                        answer.style.maxHeight = null;
-                        div.querySelector('span:last-child').textContent = '+';
-                    } else {
-                        answer.style.maxHeight = answer.scrollHeight + "px";
-                        div.querySelector('span:last-child').textContent = '-';
+                    for (const userId in users) {
+                        const userData = users[userId];
+                        const userScore = scores[userId] || 0;
+                        const isBanned = userData.isBanned || false;
+                        
+                        const userItem = document.createElement('div');
+                        userItem.className = 'admin-user-item bg-indigo-900 rounded-xl p-4 shadow-lg flex flex-col gap-2';
+                        userItem.innerHTML = `
+                            <div class="text-sm">
+                                <span class="font-bold text-fuchsia-300">Ad:</span> ${userData.firstName || 'Bilinmiyor'} (@${userData.username || 'N/A'})<br>
+                                <span class="font-bold text-fuchsia-300">ID:</span> ${userId}<br>
+                                <span class="font-bold text-fuchsia-300">Puan:</span> ${userScore} ${isBanned ? ' (Yasaklı)' : ''}
+                            </div>
+                            <div class="user-actions flex flex-wrap gap-2 justify-end mt-2">
+                                <input type="number" class="score-input p-2 rounded-lg bg-indigo-950 border border-indigo-800 text-white text-sm" placeholder="Yeni puan">
+                                <button class="update-score-btn bg-green-600 text-white font-semibold text-sm py-2 px-3 rounded-lg hover:bg-green-700 transition-colors" data-user-id="${userId}">Güncelle</button>
+                                <button class="reset-score-btn bg-yellow-600 text-white font-semibold text-sm py-2 px-3 rounded-lg hover:bg-yellow-700 transition-colors" data-user-id="${userId}">Sıfırla</button>
+                                <button class="ban-btn ${isBanned ? 'bg-orange-600' : 'bg-red-600'} text-white font-semibold text-sm py-2 px-3 rounded-lg hover:bg-red-700 transition-colors" data-user-id="${userId}">${isBanned ? 'Yasağı Kaldır' : 'Yasakla'}</button>
+                            </div>
+                        `;
+                        adminUserList.appendChild(userItem);
                     }
+
+                    document.querySelectorAll('.update-score-btn').forEach(btn => {
+                        btn.addEventListener('click', (e) => {
+                            const userId = e.target.dataset.userId;
+                            const newScore = e.target.closest('.user-actions').querySelector('.score-input').value;
+                            if (newScore !== '') {
+                                setDoc(doc(db, "scores", userId), { score: parseInt(newScore) }, { merge: true });
+                            }
+                        });
+                    });
+                    
+                    document.querySelectorAll('.reset-score-btn').forEach(btn => {
+                        btn.addEventListener('click', (e) => {
+                            const userId = e.target.dataset.userId;
+                            setDoc(doc(db, "scores", userId), { score: 0 }, { merge: true });
+                        });
+                    });
+                    
+                    document.querySelectorAll('.ban-btn').forEach(btn => {
+                        btn.addEventListener('click', (e) => {
+                            const userId = e.target.dataset.userId;
+                            const isCurrentlyBanned = e.target.textContent === 'Yasakla';
+                            setDoc(doc(db, "users", userId), { isBanned: isCurrentlyBanned }, { merge: true });
+                        });
+                    });
                 });
-                faqContainer.appendChild(div);
             });
         }
 
-        // --- Event Listener'lar ---
-        window.addEventListener('load', () => {
-            const WebApp = window.Telegram.WebApp;
-            WebApp.ready();
-            initializeFirebase();
-            renderFAQ();
-        });
+        // Liderlik Tablosunu Yükleme
+        function loadLeaderboard() {
+            const leaderboardList = document.getElementById('leaderboardList');
+            const q = query(collection(db, "scores"), where("score", ">", 0));
+            onSnapshot(q, async (snapshot) => {
+                const scores = [];
+                const userPromises = [];
+                snapshot.forEach(doc => {
+                    userPromises.push(
+                        getDoc(doc(db, "users", doc.id)).then(userDoc => {
+                            if (userDoc.exists()) {
+                                const userData = userDoc.data();
+                                return {
+                                    username: userData.firstName || 'Anonim',
+                                    score: doc.data().score,
+                                    id: userDoc.id
+                                };
+                            }
+                            return null;
+                        })
+                    );
+                });
         
-        playTowerBtn.addEventListener('click', () => showScreen('tower'));
+                const fetchedScores = await Promise.all(userPromises);
+                scores.push(...fetchedScores.filter(item => item !== null));
+        
+                scores.sort((a, b) => b.score - a.score);
+        
+                leaderboardList.innerHTML = '';
+                if (scores.length === 0) {
+                    leaderboardList.innerHTML = '<li class="leaderboard-item text-gray-400">Henüz skor yok.</li>';
+                } else {
+                    scores.slice(0, 10).forEach((item, index) => {
+                        const li = document.createElement('li');
+                        li.className = 'leaderboard-item flex justify-between items-center text-gray-200';
+                        li.innerHTML = `
+                            <span class="font-bold text-fuchsia-300">${index + 1}.</span> 
+                            <span class="name font-semibold">${item.username}</span> 
+                            <span class="score text-lg font-bold text-fuchsia-400">${item.score}</span>
+                        `;
+                        leaderboardList.appendChild(li);
+                    });
+                }
+            });
+        }
+        
+        // Buton olay dinleyicileri
         playRPSBtn.addEventListener('click', () => showScreen('rps'));
+        playTowerBtn.addEventListener('click', () => showScreen('tower'));
         showShopBtn.addEventListener('click', () => showScreen('shop'));
         showAdminBtn.addEventListener('click', () => showScreen('admin'));
-        
-        document.getElementById('backToMainFromGameBtn').addEventListener('click', () => showScreen('main'));
-        document.getElementById('backToMainFromShopBtn').addEventListener('click', () => showScreen('main'));
-        document.getElementById('backToMainFromAdminBtn').addEventListener('click', () => showScreen('main'));
+        backToMainFromGameBtn.addEventListener('click', () => showScreen('main'));
+        backToMainFromShopBtn.addEventListener('click', () => showScreen('main'));
+        backToMainFromAdminBtn.addEventListener('click', () => showScreen('main'));
 
-        startGameBtn.addEventListener('click', initializeTowerGame);
-        restartGameBtn.addEventListener('click', initializeTowerGame);
-        gameCanvas.addEventListener('click', placeBlock);
-        gameCanvas.addEventListener('touchstart', (e) => {
-            e.preventDefault();
-            placeBlock();
+        // Sayfa yüklendiğinde ana ekranı göster
+        document.addEventListener('DOMContentLoaded', () => {
+            showScreen('main');
         });
 
-        rpsButtons.rockBtn.addEventListener('click', () => playRPS('taş'));
-        rpsButtons.paperBtn.addEventListener('click', () => playRPS('kağıt'));
-        rpsButtons.scissorsBtn.addEventListener('click', () => playRPS('makas'));
-        playAgainBtn.addEventListener('click', resetRPSGame);
-        
     </script>
 </body>
 </html>
