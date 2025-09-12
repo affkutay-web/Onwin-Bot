@@ -341,21 +341,34 @@ Bonuslar, kampanya kural ve şartlarına bağlı olarak bazen oyun oynandıktan 
         authenticateUser().then(async (user) => {
              if (user) {
                 window.currentUser = user;
-                const tgUser = WebApp.initDataUnsafe.user;
+                const tgUser = WebApp.initDataUnsafe?.user;
 
                 // Kullanıcı verisini Firestore'da doğru yola kaydedin
                 const userDocRef = doc(db, `artifacts/${appId}/users/${user.uid}/data/profile`);
-                await setDoc(userDocRef, {
-                    firstName: tgUser.first_name,
-                    lastName: tgUser.last_name || null,
-                    username: tgUser.username || null,
-                    lastLogin: new Date(),
-                    telegramId: tgUser.id
-                }, { merge: true });
-
-                document.getElementById('profileIcon').textContent = tgUser.first_name.charAt(0).toUpperCase();
-                document.getElementById('username').textContent = tgUser.first_name || 'Kullanıcı';
-                document.getElementById('userId').textContent = `@${tgUser.username || user.uid}`;
+                
+                // Telegram user verisi mevcutsa kaydedin, yoksa varsayılan değerleri kullanın
+                if (tgUser) {
+                    await setDoc(userDocRef, {
+                        firstName: tgUser.first_name,
+                        lastName: tgUser.last_name || null,
+                        username: tgUser.username || null,
+                        lastLogin: new Date(),
+                        telegramId: tgUser.id
+                    }, { merge: true });
+                    document.getElementById('profileIcon').textContent = tgUser.first_name.charAt(0).toUpperCase();
+                    document.getElementById('username').textContent = tgUser.first_name || 'Kullanıcı';
+                    document.getElementById('userId').textContent = `@${tgUser.username || user.uid}`;
+                } else {
+                    // Telegram user verisi yoksa anonim kullanıcı olarak göster
+                     await setDoc(userDocRef, {
+                        firstName: 'Anonim',
+                        lastLogin: new Date(),
+                        telegramId: user.uid
+                    }, { merge: true });
+                    document.getElementById('profileIcon').textContent = 'A';
+                    document.getElementById('username').textContent = 'Anonim Kullanıcı';
+                    document.getElementById('userId').textContent = user.uid;
+                }
              }
         });
 
