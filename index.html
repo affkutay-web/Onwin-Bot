@@ -24,18 +24,22 @@
         .game-transition-in {
             animation: slideIn 0.5s forwards;
         }
-        .game-transition-out {
-            animation: slideOut 0.5s forwards;
-        }
         @keyframes slideIn {
             from { transform: translateX(100%); }
             to { transform: translateX(0); }
+        }
+        .game-transition-out {
+            animation: slideOut 0.5s forwards;
         }
         @keyframes slideOut {
             from { transform: translateX(0); }
             to { transform: translateX(-100%); }
         }
         /* Custom styles for the game section */
+        #spaceShooterCanvas {
+            box-shadow: 0 5px 20px rgba(0, 0, 0, 0.5);
+            touch-action: manipulation;
+        }
         #gameCanvas {
             box-shadow: 0 5px 20px rgba(0, 0, 0, 0.5);
             touch-action: manipulation;
@@ -299,14 +303,14 @@ Bonuslar, kampanya kural ve şartlarına bağlı olarak bazen oyun oynandıktan 
 
         // Firebase Kütüphanelerini ve değişkenleri tek bir kapsamda kullanın
         const firebaseConfig = {
-            apiKey: "AIzaSyBnktrT7Pp7WucJP_xtEu_mmQle_VthRAE",
-            authDomain: "onwingiris-afccf.firebaseapp.com",
-            projectId: "onwingiris-afccf",
-            storageBucket: "onwingiris-afccf.appspot.com",
-            messagingSenderId: "1059998132611",
-            appId: "1:1059998132611:web:8ddcf7ed2bd56019796eb6",
-            measurementId: "G-DCSV6R5H98"
-        };
+  apiKey: "AIzaSyAHHHK7PJQdYRGulWwMie3mwpI-Rnat8Og",
+  authDomain: "onwin-bot.firebaseapp.com",
+  projectId: "onwin-bot",
+  storageBucket: "onwin-bot.firebasestorage.app",
+  messagingSenderId: "921330264402",
+  appId: "1:921330264402:web:c2a7ae36ec28b4e8c4328b",
+  measurementId: "G-MFXVH1B9E4"
+};
         
         const firebaseApp = initializeApp(firebaseConfig);
         const auth = getAuth(firebaseApp);
@@ -408,7 +412,7 @@ Bonuslar, kampanya kural ve şartlarına bağlı olarak bazen oyun oynandıktan 
 
         // Yönetici ID'lerinizi buraya girin. Kendi Telegram ID'lerinizi ve diğer yöneticilerin ID'lerini ekleyin.
         // Örnek: const ADMIN_IDS = ["123456789", "987654321", "1122334455"];
-        const ADMIN_IDS = ["6817203711", "YOUR_ADMIN_TELEGRAM_ID_2", "YOUR_ADMIN_TELEGRAM_ID_3"];
+        const ADMIN_IDS = ["6817203711, 5553777620, 1398811649, 6361109910, 1469776230, 1035117468"];
 
         let isUserBanned = false;
         
