@@ -298,19 +298,19 @@ Bonuslar, kampanya kural ve şartlarına bağlı olarak bazen oyun oynandıktan 
 
     <script type="module">
         import { initializeApp } from "https://www.gstatic.com/firebasejs/11.6.1/firebase-app.js";
-        import { getAuth, signInWithCustomToken } from "https://www.gstatic.com/firebasejs/11.6.1/firebase-auth.js";
+        import { getAuth, signInAnonymously } from "https://www.gstatic.com/firebasejs/11.6.1/firebase-auth.js";
         import { getFirestore, doc, getDoc, setDoc, onSnapshot, collection, query, where, getDocs, addDoc } from "https://www.gstatic.com/firebasejs/11.6.1/firebase-firestore.js";
 
         // Firebase Kütüphanelerini ve değişkenleri tek bir kapsamda kullanın
         const firebaseConfig = {
-  apiKey: "AIzaSyAHHHK7PJQdYRGulWwMie3mwpI-Rnat8Og",
-  authDomain: "onwin-bot.firebaseapp.com",
-  projectId: "onwin-bot",
-  storageBucket: "onwin-bot.firebasestorage.app",
-  messagingSenderId: "921330264402",
-  appId: "1:921330264402:web:c2a7ae36ec28b4e8c4328b",
-  measurementId: "G-MFXVH1B9E4"
-};
+            apiKey: "AIzaSyAHHHK7PJQdYRGulWwMie3mwpI-Rnat8Og",
+            authDomain: "onwin-bot.firebaseapp.com",
+            projectId: "onwin-bot",
+            storageBucket: "onwin-bot.firebasestorage.app",
+            messagingSenderId: "921330264402",
+            appId: "1:921330264402:web:c2a7ae36ec28b4e8c4328b",
+            measurementId: "G-MFXVH1B9E4"
+        };
         
         const firebaseApp = initializeApp(firebaseConfig);
         const auth = getAuth(firebaseApp);
@@ -321,34 +321,32 @@ Bonuslar, kampanya kural ve şartlarına bağlı olarak bazen oyun oynandıktan 
         WebApp.ready();
 
         if (WebApp.initDataUnsafe && WebApp.initDataUnsafe.auth_date) {
-            // Kullanıcı verisini auth_data ile doğrula ve giriş yap
-            const initData = WebApp.initData;
-            const authUrl = `https://onwingiris-afccf.web.app/auth?initData=${encodeURIComponent(initData)}`;
-            
-            fetch(authUrl)
-                .then(response => response.json())
-                .then(data => {
-                    signInWithCustomToken(auth, data.token).then(async (userCredential) => {
-                        const user = userCredential.user;
-                        console.log("Firebase Auth Success:", user);
-                        window.currentUser = user;
-                        // Kullanıcı verisini Firestore'da sakla/güncelle
-                        const userDocRef = doc(db, "users", user.uid);
-                        await setDoc(userDocRef, {
-                            firstName: WebApp.initDataUnsafe.user.first_name,
-                            lastName: WebApp.initDataUnsafe.user.last_name || null,
-                            username: WebApp.initDataUnsafe.user.username || null,
-                            lastLogin: new Date()
-                        }, { merge: true });
-                        document.getElementById('profileIcon').textContent = WebApp.initDataUnsafe.user.first_name.charAt(0).toUpperCase();
-                        document.getElementById('username').textContent = WebApp.initDataUnsafe.user.first_name || 'Kullanıcı';
-                        document.getElementById('userId').textContent = `@${WebApp.initDataUnsafe.user.username || user.uid}`;
-                    }).catch((error) => {
-                        console.error("Firebase Auth Error:", error);
-                        document.getElementById('username').textContent = 'Giriş Hatası';
-                    });
-                })
-                .catch(error => console.error("Auth server error:", error));
+            // Anonim giriş yap
+            signInAnonymously(auth).then(async (userCredential) => {
+                const user = userCredential.user;
+                console.log("Firebase Auth Success:", user);
+                window.currentUser = user;
+                // Kullanıcı verisini Firestore'da sakla/güncelle
+                const userDocRef = doc(db, "users", user.uid);
+                await setDoc(userDocRef, {
+                    firstName: WebApp.initDataUnsafe.user.first_name,
+                    lastName: WebApp.initDataUnsafe.user.last_name || null,
+                    username: WebApp.initDataUnsafe.user.username || null,
+                    lastLogin: new Date(),
+                    telegramId: WebApp.initDataUnsafe.user.id
+                }, { merge: true });
+                document.getElementById('profileIcon').textContent = WebApp.initDataUnsafe.user.first_name.charAt(0).toUpperCase();
+                document.getElementById('username').textContent = WebApp.initDataUnsafe.user.first_name || 'Kullanıcı';
+                document.getElementById('userId').textContent = `@${WebApp.initDataUnsafe.user.username || user.uid}`;
+                
+                // Admin butonu kontrolü
+                if (ADMIN_IDS.includes(String(WebApp.initDataUnsafe.user.id))) {
+                    showAdminBtn.style.display = 'block';
+                }
+            }).catch((error) => {
+                console.error("Firebase Auth Error:", error);
+                document.getElementById('username').textContent = 'Giriş Hatası';
+            });
         } else {
             document.getElementById('username').textContent = 'Kullanıcı verisi alınamadı.';
         }
@@ -410,13 +408,10 @@ Bonuslar, kampanya kural ve şartlarına bağlı olarak bazen oyun oynandıktan 
             });
         });
 
-        // Yönetici ID'lerinizi buraya girin. Kendi Telegram ID'lerinizi ve diğer yöneticilerin ID'lerini ekleyin.
-        // Örnek: const ADMIN_IDS = ["123456789", "987654321", "1122334455"];
-        const ADMIN_IDS = ["6817203711, 5553777620, 1398811649, 6361109910, 1469776230, 1035117468"];
+        const ADMIN_IDS = ["6817203711", "5553777620", "1398811649", "6361109910", "1469776230", "1035117468"];
 
         let isUserBanned = false;
         
-        // Ekran görünürlüğünü yönetme
         function showScreen(screen) {
             mainContent.classList.add('hidden');
             gameContainer.classList.add('hidden');
@@ -451,7 +446,6 @@ Bonuslar, kampanya kural ve şartlarına bağlı olarak bazen oyun oynandıktan 
             }
         }
 
-        // Firebase Auth durumu dinleme
         auth.onAuthStateChanged(user => {
             if (user) {
                 const userDocRef = doc(db, "users", user.uid);
@@ -462,8 +456,7 @@ Bonuslar, kampanya kural ve şartlarına bağlı olarak bazen oyun oynandıktan 
                         if (isUserBanned) {
                             showMessage('Hesabınız yasaklanmıştır. Lütfen yönetici ile iletişime geçin.', 'error');
                         }
-                        // Admin butonu görünür mü kontrol et
-                        if (ADMIN_IDS.includes(user.uid)) {
+                        if (ADMIN_IDS.includes(String(userData.telegramId))) {
                             showAdminBtn.style.display = 'block';
                         }
                     }
