@@ -298,58 +298,65 @@ Bonuslar, kampanya kural ve şartlarına bağlı olarak bazen oyun oynandıktan 
 
     <script type="module">
         import { initializeApp } from "https://www.gstatic.com/firebasejs/11.6.1/firebase-app.js";
-        import { getAuth, signInWithCustomToken } from "https://www.gstatic.com/firebasejs/11.6.1/firebase-auth.js";
+        import { getAuth, signInAnonymously, signInWithCustomToken } from "https://www.gstatic.com/firebasejs/11.6.1/firebase-auth.js";
         import { getFirestore, doc, getDoc, setDoc, onSnapshot, collection, query, where, getDocs, addDoc } from "https://www.gstatic.com/firebasejs/11.6.1/firebase-firestore.js";
-        import { __app_id, __firebase_config, __initial_auth_token } from "./firebase_config.js";
-
-        // Firebase Kütüphanelerini ve değişkenleri tek bir kapsamda kullanın
-        const firebaseConfig = {
-            apiKey: "AIzaSyAHHHK7PJQdYRGulWwMie3mwpI-Rnat8Og",
-            authDomain: "onwin-bot.firebaseapp.com",
-            projectId: "onwin-bot",
-            storageBucket: "onwin-bot.firebasestorage.app",
-            messagingSenderId: "921330264402",
-            appId: "1:921330264402:web:c2a7ae36ec28b4e8c4328b",
-            measurementId: "G-MFXVH1B9E4"
-        };
+        import { setLogLevel } from "https://www.gstatic.com/firebasejs/11.6.1/firebase-firestore.js";
         
+        // Firebase için hata ayıklama seviyesini ayarlayın
+        setLogLevel('debug');
+
+        // Ortam tarafından sağlanan global değişkenleri kullanın
+        const appId = typeof __app_id !== 'undefined' ? __app_id : 'default-app-id';
+        const firebaseConfig = JSON.parse(typeof __firebase_config !== 'undefined' ? __firebase_config : '{}');
+        const initialAuthToken = typeof __initial_auth_token !== 'undefined' ? __initial_auth_token : null;
+
         const firebaseApp = initializeApp(firebaseConfig);
         const auth = getAuth(firebaseApp);
         const db = getFirestore(firebaseApp);
+        
+        // Kullanıcı kimlik doğrulamasını global token ile yapın
+        async function authenticateUser() {
+            try {
+                if (initialAuthToken) {
+                    const userCredential = await signInWithCustomToken(auth, initialAuthToken);
+                    console.log("Firebase Auth Success:", userCredential.user);
+                    return userCredential.user;
+                } else {
+                    const userCredential = await signInAnonymously(auth);
+                    console.log("Firebase Auth Success (Anonymous):", userCredential.user);
+                    return userCredential.user;
+                }
+            } catch (error) {
+                console.error("Firebase Auth Error:", error);
+                document.getElementById('username').textContent = 'Giriş Hatası';
+                return null;
+            }
+        }
         
         // Telegram Web App verisi
         const WebApp = window.Telegram.WebApp;
         WebApp.ready();
         
-        // Telegram Web App kimlik doğrulama tokenını al
-        const tgUserId = WebApp.initDataUnsafe.user.id.toString();
+        // Ortam tarafından sağlanan token ile kullanıcı oturumunu başlatın
+        authenticateUser().then(async (user) => {
+             if (user) {
+                window.currentUser = user;
+                const tgUser = WebApp.initDataUnsafe.user;
 
-        signInWithCustomToken(auth, tgUserId).then(async (userCredential) => {
-            const user = userCredential.user;
-            console.log("Firebase Auth Success:", user);
-            window.currentUser = user;
+                // Kullanıcı verisini Firestore'da doğru yola kaydedin
+                const userDocRef = doc(db, `artifacts/${appId}/users/${user.uid}/data/profile`);
+                await setDoc(userDocRef, {
+                    firstName: tgUser.first_name,
+                    lastName: tgUser.last_name || null,
+                    username: tgUser.username || null,
+                    lastLogin: new Date(),
+                    telegramId: tgUser.id
+                }, { merge: true });
 
-            // Kullanıcı verisini Firestore'da sakla/güncelle
-            const userDocRef = doc(db, "users", user.uid);
-            await setDoc(userDocRef, {
-                firstName: WebApp.initDataUnsafe.user.first_name,
-                lastName: WebApp.initDataUnsafe.user.last_name || null,
-                username: WebApp.initDataUnsafe.user.username || null,
-                lastLogin: new Date(),
-                telegramId: WebApp.initDataUnsafe.user.id
-            }, { merge: true });
-
-            document.getElementById('profileIcon').textContent = WebApp.initDataUnsafe.user.first_name.charAt(0).toUpperCase();
-            document.getElementById('username').textContent = WebApp.initDataUnsafe.user.first_name || 'Kullanıcı';
-            document.getElementById('userId').textContent = `@${WebApp.initDataUnsafe.user.username || user.uid}`;
-
-            // Admin butonu kontrolü
-            if (ADMIN_IDS.includes(String(WebApp.initDataUnsafe.user.id))) {
-                showAdminBtn.style.display = 'block';
-            }
-        }).catch((error) => {
-            console.error("Firebase Auth Error:", error);
-            document.getElementById('username').textContent = 'Giriş Hatası';
+                document.getElementById('profileIcon').textContent = tgUser.first_name.charAt(0).toUpperCase();
+                document.getElementById('username').textContent = tgUser.first_name || 'Kullanıcı';
+                document.getElementById('userId').textContent = `@${tgUser.username || user.uid}`;
+             }
         });
 
 
@@ -449,7 +456,8 @@ Bonuslar, kampanya kural ve şartlarına bağlı olarak bazen oyun oynandıktan 
 
         auth.onAuthStateChanged(user => {
             if (user) {
-                const userDocRef = doc(db, "users", user.uid);
+                // Kullanıcı verisini ve yasak durumunu doğru yoldan dinleyin
+                const userDocRef = doc(db, `artifacts/${appId}/users/${user.uid}/data/profile`);
                 onSnapshot(userDocRef, (docSnap) => {
                     if (docSnap.exists()) {
                         const userData = docSnap.data();
@@ -457,13 +465,15 @@ Bonuslar, kampanya kural ve şartlarına bağlı olarak bazen oyun oynandıktan 
                         if (isUserBanned) {
                             showMessage('Hesabınız yasaklanmıştır. Lütfen yönetici ile iletişime geçin.', 'error');
                         }
+                        // Admin butonu kontrolü
                         if (ADMIN_IDS.includes(String(userData.telegramId))) {
                             showAdminBtn.style.display = 'block';
                         }
                     }
                 });
 
-                const userScoreRef = doc(db, "scores", user.uid);
+                // Kullanıcı skorunu doğru yoldan dinleyin
+                const userScoreRef = doc(db, `artifacts/${appId}/users/${user.uid}/data/scores`);
                 onSnapshot(userScoreRef, (docSnap) => {
                     const scoreData = docSnap.data();
                     const totalScore = scoreData ? (scoreData.score || 0) : 0;
@@ -551,7 +561,8 @@ Bonuslar, kampanya kural ve şartlarına bağlı olarak bazen oyun oynandıktan 
                 }
 
                 if (auth.currentUser) {
-                    const userScoreRef = doc(db, "scores", auth.currentUser.uid);
+                    // Skor verisini doğru yola kaydedin
+                    const userScoreRef = doc(db, `artifacts/${appId}/users/${auth.currentUser.uid}/data/scores`);
                     getDoc(userScoreRef).then(docSnap => {
                         const currentScore = docSnap.data()?.score || 0;
                         setDoc(userScoreRef, { score: currentScore + 15 }, { merge: true });
@@ -580,7 +591,8 @@ Bonuslar, kampanya kural ve şartlarına bağlı olarak bazen oyun oynandıktan 
                     restartGameBtn.classList.remove('hidden');
 
                     if (auth.currentUser) {
-                         const scoreRef = doc(db, "scores", auth.currentUser.uid);
+                         // Skor verisini doğru yola kaydedin
+                         const scoreRef = doc(db, `artifacts/${appId}/users/${auth.currentUser.uid}/data/scores`);
                          getDoc(scoreRef).then(docSnap => {
                             setDoc(scoreRef, { score: (docSnap.data()?.score || 0) + 500 }, { merge: true });
                          });
@@ -604,7 +616,8 @@ Bonuslar, kampanya kural ve şartlarına bağlı olarak bazen oyun oynandıktan 
                 startGameBtn.classList.add('hidden');
                 restartGameBtn.classList.remove('hidden');
                 if (auth.currentUser) {
-                    const userScoreRef = doc(db, "scores", auth.currentUser.uid);
+                    // Skor verisini doğru yola kaydedin
+                    const userScoreRef = doc(db, `artifacts/${appId}/users/${auth.currentUser.uid}/data/scores`);
                     getDoc(userScoreRef).then(docSnap => {
                         setDoc(userScoreRef, { score: (docSnap.data()?.score || 0) + score }, { merge: true });
                     });
@@ -686,7 +699,8 @@ Bonuslar, kampanya kural ve şartlarına bağlı olarak bazen oyun oynandıktan 
             }
 
             if (points > 0 && auth.currentUser) {
-                 const userScoreRef = doc(db, "scores", auth.currentUser.uid);
+                 // Skor verisini doğru yola kaydedin
+                 const userScoreRef = doc(db, `artifacts/${appId}/users/${auth.currentUser.uid}/data/scores`);
                  getDoc(userScoreRef).then(docSnap => {
                      setDoc(userScoreRef, { score: (docSnap.data()?.score || 0) + points }, { merge: true });
                  });
@@ -752,7 +766,8 @@ Bonuslar, kampanya kural ve şartlarına bağlı olarak bazen oyun oynandıktan 
                  return;
             }
             if (auth.currentUser) {
-                const userScoreRef = doc(db, "scores", auth.currentUser.uid);
+                // Skor verisini doğru yoldan çekin ve güncelleyin
+                const userScoreRef = doc(db, `artifacts/${appId}/users/${auth.currentUser.uid}/data/scores`);
                 getDoc(userScoreRef).then(docSnap => {
                     const currentScore = docSnap.data()?.score || 0;
                     if (currentScore >= itemPrice) {
@@ -796,49 +811,62 @@ Bonuslar, kampanya kural ve şartlarına bağlı olarak bazen oyun oynandıktan 
             const adminUserList = document.getElementById('adminUserList');
             adminUserList.innerHTML = '<p class="text-gray-400">Kullanıcılar yükleniyor...</p>';
             
-            const usersRef = collection(db, "users");
-            const scoresRef = collection(db, "scores");
+            // Kullanıcı ve skor verilerini doğru yoldan alın
+            const usersRef = collection(db, `artifacts/${appId}/users`);
             
-            // Kullanıcı ve skor verilerini tek bir sorguda alıyoruz
-            onSnapshot(collection(db, "users"), (userSnapshot) => {
-                onSnapshot(collection(db, "scores"), (scoreSnapshot) => {
-                    const users = {};
-                    userSnapshot.forEach(doc => users[doc.id] = doc.data());
+            onSnapshot(usersRef, (snapshot) => {
+                const users = [];
+                const scorePromises = [];
 
-                    const scores = {};
-                    scoreSnapshot.forEach(doc => scores[doc.id] = doc.data().score);
+                snapshot.forEach(userDoc => {
+                    const profileRef = doc(db, `artifacts/${appId}/users/${userDoc.id}/data/profile`);
+                    const scoreRef = doc(db, `artifacts/${appId}/users/${userDoc.id}/data/scores`);
+                    
+                    scorePromises.push(Promise.all([getDoc(profileRef), getDoc(scoreRef)]).then(([profileSnap, scoreSnap]) => {
+                        if (profileSnap.exists()) {
+                            const userData = profileSnap.data();
+                            const userScore = scoreSnap.exists() ? scoreSnap.data().score : 0;
+                            return { id: userDoc.id, ...userData, score: userScore };
+                        }
+                        return null;
+                    }));
+                });
 
+                Promise.all(scorePromises).then(results => {
                     adminUserList.innerHTML = '';
-                
-                    for (const userId in users) {
-                        const userData = users[userId];
-                        const userScore = scores[userId] || 0;
+                    const validUsers = results.filter(u => u !== null);
+                    if (validUsers.length === 0) {
+                        adminUserList.innerHTML = '<p class="text-gray-400">Kullanıcı verisi bulunamadı.</p>';
+                        return;
+                    }
+
+                    validUsers.forEach(userData => {
                         const isBanned = userData.isBanned || false;
-                        
                         const userItem = document.createElement('div');
                         userItem.className = 'admin-user-item bg-indigo-900 rounded-xl p-4 shadow-lg flex flex-col gap-2';
                         userItem.innerHTML = `
                             <div class="text-sm">
                                 <span class="font-bold text-fuchsia-300">Ad:</span> ${userData.firstName || 'Bilinmiyor'} (@${userData.username || 'N/A'})<br>
-                                <span class="font-bold text-fuchsia-300">ID:</span> ${userId}<br>
-                                <span class="font-bold text-fuchsia-300">Puan:</span> ${userScore} ${isBanned ? ' (Yasaklı)' : ''}
+                                <span class="font-bold text-fuchsia-300">ID:</span> ${userData.id}<br>
+                                <span class="font-bold text-fuchsia-300">Puan:</span> ${userData.score} ${isBanned ? ' (Yasaklı)' : ''}
                             </div>
                             <div class="user-actions flex flex-wrap gap-2 justify-end mt-2">
                                 <input type="number" class="score-input p-2 rounded-lg bg-indigo-950 border border-indigo-800 text-white text-sm" placeholder="Yeni puan">
-                                <button class="update-score-btn bg-green-600 text-white font-semibold text-sm py-2 px-3 rounded-lg hover:bg-green-700 transition-colors" data-user-id="${userId}">Güncelle</button>
-                                <button class="reset-score-btn bg-yellow-600 text-white font-semibold text-sm py-2 px-3 rounded-lg hover:bg-yellow-700 transition-colors" data-user-id="${userId}">Sıfırla</button>
-                                <button class="ban-btn ${isBanned ? 'bg-orange-600' : 'bg-red-600'} text-white font-semibold text-sm py-2 px-3 rounded-lg hover:bg-red-700 transition-colors" data-user-id="${userId}">${isBanned ? 'Yasağı Kaldır' : 'Yasakla'}</button>
+                                <button class="update-score-btn bg-green-600 text-white font-semibold text-sm py-2 px-3 rounded-lg hover:bg-green-700 transition-colors" data-user-id="${userData.id}">Güncelle</button>
+                                <button class="reset-score-btn bg-yellow-600 text-white font-semibold text-sm py-2 px-3 rounded-lg hover:bg-yellow-700 transition-colors" data-user-id="${userData.id}">Sıfırla</button>
+                                <button class="ban-btn ${isBanned ? 'bg-orange-600' : 'bg-red-600'} text-white font-semibold text-sm py-2 px-3 rounded-lg hover:bg-red-700 transition-colors" data-user-id="${userData.id}">${isBanned ? 'Yasağı Kaldır' : 'Yasakla'}</button>
                             </div>
                         `;
                         adminUserList.appendChild(userItem);
-                    }
-
+                    });
+                     // Buton dinleyicilerini ekleyin
                     document.querySelectorAll('.update-score-btn').forEach(btn => {
                         btn.addEventListener('click', (e) => {
                             const userId = e.target.dataset.userId;
                             const newScore = e.target.closest('.user-actions').querySelector('.score-input').value;
                             if (newScore !== '') {
-                                setDoc(doc(db, "scores", userId), { score: parseInt(newScore) }, { merge: true });
+                                // Skor verisini doğru yola güncelleyin
+                                setDoc(doc(db, `artifacts/${appId}/users/${userId}/data/scores`), { score: parseInt(newScore) }, { merge: true });
                             }
                         });
                     });
@@ -846,7 +874,8 @@ Bonuslar, kampanya kural ve şartlarına bağlı olarak bazen oyun oynandıktan 
                     document.querySelectorAll('.reset-score-btn').forEach(btn => {
                         btn.addEventListener('click', (e) => {
                             const userId = e.target.dataset.userId;
-                            setDoc(doc(db, "scores", userId), { score: 0 }, { merge: true });
+                             // Skor verisini doğru yola sıfırlayın
+                            setDoc(doc(db, `artifacts/${appId}/users/${userId}/data/scores`), { score: 0 }, { merge: true });
                         });
                     });
                     
@@ -854,7 +883,8 @@ Bonuslar, kampanya kural ve şartlarına bağlı olarak bazen oyun oynandıktan 
                         btn.addEventListener('click', (e) => {
                             const userId = e.target.dataset.userId;
                             const isCurrentlyBanned = e.target.textContent === 'Yasakla';
-                            setDoc(doc(db, "users", userId), { isBanned: isCurrentlyBanned }, { merge: true });
+                             // Kullanıcı verisini doğru yolda güncelleyin
+                            setDoc(doc(db, `artifacts/${appId}/users/${userId}/data/profile`), { isBanned: isCurrentlyBanned }, { merge: true });
                         });
                     });
                 });
@@ -865,7 +895,8 @@ Bonuslar, kampanya kural ve şartlarına bağlı olarak bazen oyun oynandıktan 
             const statsContent = document.getElementById('statsContent');
             statsContent.innerHTML = '<p class="text-gray-400">İstatistikler yükleniyor...</p>';
             
-            onSnapshot(doc(db, "bot_stats", "main"), (docSnap) => {
+            // Veritabanı yolunu doğru şekilde kullanın
+            onSnapshot(doc(db, `artifacts/${appId}/public/data/bot_stats`), (docSnap) => {
                 if (docSnap.exists()) {
                     const stats = docSnap.data();
                     const totalSubscribers = stats.abone_sayisi || 0;
@@ -933,7 +964,8 @@ Bonuslar, kampanya kural ve şartlarına bağlı olarak bazen oyun oynandıktan 
             const feedbackList = document.getElementById('feedbackList');
             feedbackList.innerHTML = '<p class="text-gray-400">Geri bildirimler yükleniyor...</p>';
             
-            onSnapshot(collection(db, "geribildirimler"), (snapshot) => {
+            // Geri bildirim verilerini doğru yoldan alın
+            onSnapshot(collection(db, `artifacts/${appId}/public/data/geribildirimler`), (snapshot) => {
                 feedbackList.innerHTML = '';
                 if (snapshot.empty) {
                     feedbackList.innerHTML = '<p class="text-gray-400">Henüz geri bildirim yok.</p>';
@@ -969,7 +1001,8 @@ Bonuslar, kampanya kural ve şartlarına bağlı olarak bazen oyun oynandıktan 
             announcementMessage.className = 'text-fuchsia-400 font-semibold';
             
             try {
-                await addDoc(collection(db, "announcements"), {
+                // Duyuru verisini doğru yola kaydedin
+                await addDoc(collection(db, `artifacts/${appId}/public/data/announcements`), {
                     text: announcementText,
                     timestamp: new Date(),
                     status: 'pending'
@@ -987,28 +1020,30 @@ Bonuslar, kampanya kural ve şartlarına bağlı olarak bazen oyun oynandıktan 
         // Liderlik Tablosunu Yükleme
         function loadLeaderboard() {
             const leaderboardList = document.getElementById('leaderboardList');
-            const q = query(collection(db, "scores"), where("score", ">", 0));
-            onSnapshot(q, async (snapshot) => {
+            // Liderlik tablosu için skorları doğru yoldan alın
+            const scoresRef = collection(db, `artifacts/${appId}/users`);
+            onSnapshot(scoresRef, async (snapshot) => {
                 const scores = [];
                 const userPromises = [];
-                snapshot.forEach(doc => {
-                    userPromises.push(
-                        getDoc(doc(db, "users", doc.id)).then(userDoc => {
-                            if (userDoc.exists()) {
-                                const userData = userDoc.data();
-                                return {
-                                    username: userData.firstName || 'Anonim',
-                                    score: doc.data().score,
-                                    id: userDoc.id
-                                };
-                            }
-                            return null;
-                        })
-                    );
+                snapshot.forEach(userDoc => {
+                    const scoreRef = doc(db, `artifacts/${appId}/users/${userDoc.id}/data/scores`);
+                    const profileRef = doc(db, `artifacts/${appId}/users/${userDoc.id}/data/profile`);
+                    
+                    userPromises.push(Promise.all([getDoc(scoreRef), getDoc(profileRef)]).then(([scoreSnap, profileSnap]) => {
+                        if (scoreSnap.exists() && profileSnap.exists()) {
+                            const userData = profileSnap.data();
+                            return {
+                                username: userData.firstName || 'Anonim',
+                                score: scoreSnap.data().score,
+                                id: userDoc.id
+                            };
+                        }
+                        return null;
+                    }));
                 });
         
                 const fetchedScores = await Promise.all(userPromises);
-                scores.push(...fetchedScores.filter(item => item !== null));
+                scores.push(...fetchedScores.filter(item => item !== null && item.score > 0));
         
                 scores.sort((a, b) => b.score - a.score);
         
@@ -1299,7 +1334,8 @@ Bonuslar, kampanya kural ve şartlarına bağlı olarak bazen oyun oynandıktan 
             showGameOverScreen();
 
             if (auth.currentUser) {
-                const userScoreRef = doc(db, "scores", auth.currentUser.uid);
+                // Skor verisini doğru yola kaydedin
+                const userScoreRef = doc(db, `artifacts/${appId}/users/${auth.currentUser.uid}/data/scores`);
                 getDoc(userScoreRef).then(docSnap => {
                     const currentScore = docSnap.data()?.score || 0;
                     setDoc(userScoreRef, { score: currentScore + spaceShooterScore }, { merge: true });
