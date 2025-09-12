@@ -6,6 +6,7 @@
     <title>Telegram Mini App</title>
     <script src="https://telegram.org/js/telegram-web-app.js"></script>
     <script src="https://cdn.tailwindcss.com"></script>
+    <script src="https://cdn.jsdelivr.net/npm/chart.js"></script>
     <link rel="preconnect" href="https://fonts.googleapis.com">
     <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
     <link href="https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700&display=swap" rel="stylesheet">
@@ -53,78 +54,6 @@
 </head>
 <body class="bg-gray-950 text-white min-h-screen flex flex-col items-center p-4">
 
-    <!-- Firebase Kütüphaneleri -->
-    <script type="module">
-        import { initializeApp } from "https://www.gstatic.com/firebasejs/11.6.1/firebase-app.js";
-        import { getAuth, signInWithCustomToken } from "https://www.gstatic.com/firebasejs/11.6.1/firebase-auth.js";
-        import { getFirestore, doc, getDoc, setDoc, onSnapshot, collection, query, where } from "https://www.gstatic.com/firebasejs/11.6.1/firebase-firestore.js";
-
-        // Global değişkenler
-        window.initializeApp = initializeApp;
-        window.getAuth = getAuth;
-        window.signInWithCustomToken = signInWithCustomToken;
-        window.getFirestore = getFirestore;
-        window.doc = doc;
-        window.getDoc = getDoc;
-        window.setDoc = setDoc;
-        window.onSnapshot = onSnapshot;
-        window.collection = collection;
-        window.query = query;
-        window.where = where;
-
-        const firebaseConfig = {
-            apiKey: "AIzaSyBnktrT7Pp7WucJP_xtEu_mmQle_VthRAE",
-            authDomain: "onwingiris-afccf.firebaseapp.com",
-            projectId: "onwingiris-afccf",
-            storageBucket: "onwingiris-afccf.appspot.com",
-            messagingSenderId: "1059998132611",
-            appId: "1:1059998132611:web:8ddcf7ed2bd56019796eb6",
-            measurementId: "G-DCSV6R5H98"
-        };
-        
-        window.firebaseApp = initializeApp(firebaseConfig);
-        window.auth = getAuth(window.firebaseApp);
-        window.db = getFirestore(window.firebaseApp);
-
-        // Telegram Web App verisi
-        const WebApp = window.Telegram.WebApp;
-        WebApp.ready();
-
-        if (WebApp.initDataUnsafe && WebApp.initDataUnsafe.auth_date) {
-            // Kullanıcı verisini auth_data ile doğrula ve giriş yap
-            const initData = WebApp.initData;
-            const authUrl = `https://onwingiris-afccf.web.app/auth?initData=${encodeURIComponent(initData)}`;
-            
-            fetch(authUrl)
-                .then(response => response.json())
-                .then(data => {
-                    signInWithCustomToken(window.auth, data.token).then(async (userCredential) => {
-                        const user = userCredential.user;
-                        console.log("Firebase Auth Success:", user);
-                        window.currentUser = user;
-                        // Kullanıcı verisini Firestore'da sakla/güncelle
-                        const userDocRef = doc(window.db, "users", user.uid);
-                        await setDoc(userDocRef, {
-                            firstName: WebApp.initDataUnsafe.user.first_name,
-                            lastName: WebApp.initDataUnsafe.user.last_name || null,
-                            username: WebApp.initDataUnsafe.user.username || null,
-                            lastLogin: new Date()
-                        }, { merge: true });
-                        document.getElementById('profileIcon').textContent = WebApp.initDataUnsafe.user.first_name.charAt(0).toUpperCase();
-                        document.getElementById('username').textContent = WebApp.initDataUnsafe.user.first_name || 'Kullanıcı';
-                        document.getElementById('userId').textContent = `@${WebApp.initDataUnsafe.user.username || user.uid}`;
-                    }).catch((error) => {
-                        console.error("Firebase Auth Error:", error);
-                        document.getElementById('username').textContent = 'Giriş Hatası';
-                    });
-                })
-                .catch(error => console.error("Auth server error:", error));
-        } else {
-            document.getElementById('username').textContent = 'Kullanıcı verisi alınamadı.';
-        }
-    </script>
-
-
     <!-- Ana İçerik Konteyneri -->
     <div id="mainContent" class="container w-full max-w-lg mt-8 p-4 bg-indigo-950 rounded-2xl shadow-xl animate-fadeIn">
         <div class="profile-header flex flex-col items-center justify-center p-4">
@@ -146,6 +75,9 @@
             </button>
             <button id="playRPSBtn" class="w-full bg-indigo-900 text-white font-semibold py-3 px-6 rounded-xl hover:bg-indigo-800 transition-colors duration-200">
                 Taş-Kağıt-Makas Oyna
+            </button>
+            <button id="playSpaceShooterBtn" class="w-full bg-indigo-900 text-white font-semibold py-3 px-6 rounded-xl hover:bg-indigo-800 transition-colors duration-200">
+                Uzay Atıcısı Oyna
             </button>
             <button id="showShopBtn" class="w-full bg-indigo-900 text-white font-semibold py-3 px-6 rounded-xl hover:bg-indigo-800 transition-colors duration-200">
                 Ödül Mağazası
@@ -282,6 +214,22 @@ Bonuslar, kampanya kural ve şartlarına bağlı olarak bazen oyun oynandıktan 
             </div>
         </div>
 
+        <div id="spaceShooterGameScreen" class="game-screen w-full flex flex-col items-center justify-center p-4 hidden">
+            <div class="card w-full max-w-lg bg-indigo-950 rounded-2xl p-6 shadow-xl flex flex-col items-center gap-4">
+                <h2 class="text-2xl font-bold text-fuchsia-300">Uzay Atıcısı</h2>
+                <div id="spaceShooterScoreDisplay" class="text-3xl font-bold text-fuchsia-400">Skor: 0</div>
+                <canvas id="spaceShooterCanvas" width="300" height="400" class="w-full h-auto bg-gray-900 rounded-lg shadow-inner"></canvas>
+                <div class="flex flex-col gap-2 mt-4 w-full max-w-xs">
+                    <button id="startSpaceShooterGameBtn" class="game-button w-full bg-fuchsia-600 text-white font-semibold py-3 px-6 rounded-xl shadow-lg hover:bg-fuchsia-700 transition-colors duration-200">
+                        Oyunu Başlat
+                    </button>
+                    <button id="restartSpaceShooterGameBtn" class="game-button w-full bg-indigo-900 text-white font-semibold py-3 px-6 rounded-xl hover:bg-indigo-800 transition-colors duration-200 hidden">
+                        Yeniden Başlat
+                    </button>
+                </div>
+            </div>
+        </div>
+
         <div id="leaderboardCard" class="card w-full max-w-lg bg-indigo-950 rounded-2xl p-6 shadow-xl mt-4">
             <h2 class="text-xl font-bold text-fuchsia-300 border-b-2 border-fuchsia-400 pb-2 mb-4">Liderlik Tablosu</h2>
             <ul id="leaderboardList" class="leaderboard-list list-none p-0 space-y-2">
@@ -305,18 +253,103 @@ Bonuslar, kampanya kural ve şartlarına bağlı olarak bazen oyun oynandıktan 
 
     <div id="adminPanel" class="admin-container hidden fixed inset-0 z-10 p-4 bg-gray-950 overflow-y-auto">
         <div class="card w-full max-w-lg bg-indigo-950 rounded-2xl p-6 shadow-xl mt-8 mx-auto">
-            <h2 class="text-2xl font-bold text-fuchsia-300 border-b-2 border-fuchsia-400 pb-2 mb-4">Yönetici Paneli</h2>
-            <div id="adminUserList" class="space-y-4">
-                <p class="text-gray-400">Kullanıcılar yükleniyor...</p>
+             <h2 class="text-2xl font-bold text-fuchsia-300 border-b-2 border-fuchsia-400 pb-2 mb-4">Yönetici Paneli</h2>
+            
+            <!-- Admin Sekmeleri -->
+            <div class="flex border-b border-indigo-700">
+                <button id="tab-users" class="tab-button flex-1 py-3 text-center text-gray-400 hover:text-fuchsia-300 transition-colors duration-200 focus:outline-none">Kullanıcı Yönetimi</button>
+                <button id="tab-stats" class="tab-button flex-1 py-3 text-center text-gray-400 hover:text-fuchsia-300 transition-colors duration-200 focus:outline-none">Bot İstatistikleri</button>
+                <button id="tab-feedback" class="tab-button flex-1 py-3 text-center text-gray-400 hover:text-fuchsia-300 transition-colors duration-200 focus:outline-none">Geri Bildirimler</button>
+                <button id="tab-announce" class="tab-button flex-1 py-3 text-center text-gray-400 hover:text-fuchsia-300 transition-colors duration-200 focus:outline-none">Duyuru Gönder</button>
             </div>
+
+            <!-- Sekme İçerikleri -->
+            <div id="tab-content-users" class="mt-4 tab-content">
+                <div id="adminUserList" class="space-y-4">
+                    <p class="text-gray-400">Kullanıcılar yükleniyor...</p>
+                </div>
+            </div>
+            <div id="tab-content-stats" class="mt-4 hidden tab-content">
+                <div id="statsContent" class="space-y-4">
+                    <p class="text-gray-400">İstatistikler yükleniyor...</p>
+                </div>
+                <div class="mt-6"><canvas id="commandUsageChart"></canvas></div>
+            </div>
+            <div id="tab-content-feedback" class="mt-4 hidden tab-content">
+                <div id="feedbackList" class="space-y-4">
+                    <p class="text-gray-400">Geri bildirimler yükleniyor...</p>
+                </div>
+            </div>
+            <div id="tab-content-announce" class="mt-4 hidden tab-content">
+                <textarea id="announcementText" class="w-full h-32 p-4 rounded-lg bg-indigo-900 border border-indigo-700 text-white placeholder-gray-500 focus:outline-none focus:border-fuchsia-400" placeholder="Duyuru metnini buraya yazın..."></textarea>
+                <p class="text-gray-400 text-sm mt-2">Duyuru MarkdownV2 formatında gönderilecektir.</p>
+                <button id="sendAnnouncementBtn" class="mt-4 w-full bg-fuchsia-600 text-white font-semibold py-3 px-6 rounded-xl hover:bg-fuchsia-700 transition-colors duration-200">Duyuruyu Gönder</button>
+                <div id="announcementMessage" class="mt-2 text-center"></div>
+            </div>
+
         </div>
         <button id="backToMainFromAdminBtn" class="mt-4 w-full max-w-lg bg-indigo-900 text-white font-semibold py-3 px-6 rounded-xl hover:bg-indigo-800 transition-colors duration-200 block mx-auto">Geri Dön</button>
     </div>
 
 
     <script type="module">
-        const FIREBASE_API_KEY = "AIzaSyBnktrT7Pp7WucJP_xtEu_mmQle_VthRAE";
+        import { initializeApp } from "https://www.gstatic.com/firebasejs/11.6.1/firebase-app.js";
+        import { getAuth, signInWithCustomToken } from "https://www.gstatic.com/firebasejs/11.6.1/firebase-auth.js";
+        import { getFirestore, doc, getDoc, setDoc, onSnapshot, collection, query, where, getDocs, addDoc } from "https://www.gstatic.com/firebasejs/11.6.1/firebase-firestore.js";
+
+        // Firebase Kütüphanelerini ve değişkenleri tek bir kapsamda kullanın
+        const firebaseConfig = {
+            apiKey: "AIzaSyBnktrT7Pp7WucJP_xtEu_mmQle_VthRAE",
+            authDomain: "onwingiris-afccf.firebaseapp.com",
+            projectId: "onwingiris-afccf",
+            storageBucket: "onwingiris-afccf.appspot.com",
+            messagingSenderId: "1059998132611",
+            appId: "1:1059998132611:web:8ddcf7ed2bd56019796eb6",
+            measurementId: "G-DCSV6R5H98"
+        };
         
+        const firebaseApp = initializeApp(firebaseConfig);
+        const auth = getAuth(firebaseApp);
+        const db = getFirestore(firebaseApp);
+        
+        // Telegram Web App verisi
+        const WebApp = window.Telegram.WebApp;
+        WebApp.ready();
+
+        if (WebApp.initDataUnsafe && WebApp.initDataUnsafe.auth_date) {
+            // Kullanıcı verisini auth_data ile doğrula ve giriş yap
+            const initData = WebApp.initData;
+            const authUrl = `https://onwingiris-afccf.web.app/auth?initData=${encodeURIComponent(initData)}`;
+            
+            fetch(authUrl)
+                .then(response => response.json())
+                .then(data => {
+                    signInWithCustomToken(auth, data.token).then(async (userCredential) => {
+                        const user = userCredential.user;
+                        console.log("Firebase Auth Success:", user);
+                        window.currentUser = user;
+                        // Kullanıcı verisini Firestore'da sakla/güncelle
+                        const userDocRef = doc(db, "users", user.uid);
+                        await setDoc(userDocRef, {
+                            firstName: WebApp.initDataUnsafe.user.first_name,
+                            lastName: WebApp.initDataUnsafe.user.last_name || null,
+                            username: WebApp.initDataUnsafe.user.username || null,
+                            lastLogin: new Date()
+                        }, { merge: true });
+                        document.getElementById('profileIcon').textContent = WebApp.initDataUnsafe.user.first_name.charAt(0).toUpperCase();
+                        document.getElementById('username').textContent = WebApp.initDataUnsafe.user.first_name || 'Kullanıcı';
+                        document.getElementById('userId').textContent = `@${WebApp.initDataUnsafe.user.username || user.uid}`;
+                    }).catch((error) => {
+                        console.error("Firebase Auth Error:", error);
+                        document.getElementById('username').textContent = 'Giriş Hatası';
+                    });
+                })
+                .catch(error => console.error("Auth server error:", error));
+        } else {
+            document.getElementById('username').textContent = 'Kullanıcı verisi alınamadı.';
+        }
+
+
         // Modal UI
         function showMessage(message, type = 'info') {
             const modal = document.createElement('div');
@@ -345,17 +378,6 @@ Bonuslar, kampanya kural ve şartlarına bağlı olarak bazen oyun oynandıktan 
             document.body.appendChild(modal);
         }
 
-        const db = window.db;
-        const auth = window.auth;
-        const setDoc = window.setDoc;
-        const doc = window.doc;
-        const onSnapshot = window.onSnapshot;
-        const collection = window.collection;
-        const query = window.query;
-        const where = window.where;
-        const firestore = window.firestore;
-        const WebApp = window.Telegram.WebApp;
-
         const mainContent = document.getElementById('mainContent');
         const gameContainer = document.getElementById('gameContainer');
         const shopContainer = document.getElementById('shopContainer');
@@ -363,11 +385,13 @@ Bonuslar, kampanya kural ve şartlarına bağlı olarak bazen oyun oynandıktan 
 
         const playRPSBtn = document.getElementById('playRPSBtn');
         const playTowerBtn = document.getElementById('playTowerBtn');
+        const playSpaceShooterBtn = document.getElementById('playSpaceShooterBtn');
         const showShopBtn = document.getElementById('showShopBtn');
         const showAdminBtn = document.getElementById('showAdminBtn');
 
         const rpsGameScreen = document.getElementById('rpsGameScreen');
         const towerGameScreen = document.getElementById('towerGameScreen');
+        const spaceShooterGameScreen = document.getElementById('spaceShooterGameScreen');
         
         const backToMainFromGameBtn = document.getElementById('backToMainFromGameBtn');
         const backToMainFromShopBtn = document.getElementById('backToMainFromShopBtn');
@@ -400,18 +424,26 @@ Bonuslar, kampanya kural ve şartlarına bağlı olarak bazen oyun oynandıktan 
             } else if (screen === 'tower') {
                 gameContainer.classList.remove('hidden');
                 rpsGameScreen.classList.add('hidden');
+                spaceShooterGameScreen.classList.add('hidden');
                 towerGameScreen.classList.remove('hidden');
                 initializeTowerGame();
             } else if (screen === 'rps') {
                 gameContainer.classList.remove('hidden');
                 towerGameScreen.classList.add('hidden');
+                spaceShooterGameScreen.classList.add('hidden');
                 rpsGameScreen.classList.remove('hidden');
                 resetRPSGame();
+            } else if (screen === 'space-shooter') {
+                gameContainer.classList.remove('hidden');
+                towerGameScreen.classList.add('hidden');
+                rpsGameScreen.classList.add('hidden');
+                spaceShooterGameScreen.classList.remove('hidden');
+                initializeSpaceShooterGame();
             } else if (screen === 'shop') {
                 shopContainer.classList.remove('hidden');
             } else if (screen === 'admin') {
                 adminPanel.classList.remove('hidden');
-                renderAdminPanel();
+                renderAdminPanel('users');
             }
         }
 
@@ -680,12 +712,7 @@ Bonuslar, kampanya kural ve şartlarına bağlı olarak bazen oyun oynandıktan 
         playAgainBtn.addEventListener('click', resetRPSGame);
         
         // Ödül Mağazası Ürünleri
-        const shopProducts = [
-            { id: '1', name: 'Özel Kullanıcı Rozeti', price: 1000, description: 'Telegram profilinizde kullanabileceğiniz nadir bir rozet.' },
-            { id: '2', name: 'Tek kullanımlık 250 Puan', price: 500, description: 'Oyun içinde kullanabileceğiniz 250 bonus puan.' },
-            { id: '3', name: 'Sınırsız Oyun Hakkı', price: 2000, description: 'Sınırlı süreliğine oyun hakkınızı yeniler.' },
-            { id: '4', name: 'Şanslı Kutu', price: 750, description: 'İçinden rastgele miktarda puan veya sürpriz ödül çıkar.' }
-        ];
+        const shopProducts = [];
 
         function renderShopItems() {
             const shopItemsContainer = document.getElementById('shopItems');
@@ -749,7 +776,25 @@ Bonuslar, kampanya kural ve şartlarına bağlı olarak bazen oyun oynandıktan 
         }
         
         // Yönetici paneli fonksiyonları
-        function renderAdminPanel() {
+        function renderAdminPanel(tabName) {
+            document.querySelectorAll('.tab-content').forEach(el => el.classList.add('hidden'));
+            document.querySelectorAll('.tab-button').forEach(el => el.classList.remove('text-fuchsia-400', 'border-fuchsia-400', 'border-b-2'));
+
+            document.getElementById(`tab-content-${tabName}`).classList.remove('hidden');
+            document.getElementById(`tab-${tabName}`).classList.add('text-fuchsia-400', 'border-fuchsia-400', 'border-b-2');
+
+            if (tabName === 'users') {
+                 renderAdminUserList();
+            } else if (tabName === 'stats') {
+                 renderAdminStats();
+            } else if (tabName === 'feedback') {
+                 renderAdminFeedback();
+            } else if (tabName === 'announce') {
+                 // Duyuru sekmesi için özel bir render işlemi yok, doğrudan HTML'de hazır.
+            }
+        }
+        
+        function renderAdminUserList() {
             const adminUserList = document.getElementById('adminUserList');
             adminUserList.innerHTML = '<p class="text-gray-400">Kullanıcılar yükleniyor...</p>';
             
@@ -818,6 +863,129 @@ Bonuslar, kampanya kural ve şartlarına bağlı olarak bazen oyun oynandıktan 
             });
         }
 
+        function renderAdminStats() {
+            const statsContent = document.getElementById('statsContent');
+            statsContent.innerHTML = '<p class="text-gray-400">İstatistikler yükleniyor...</p>';
+            
+            onSnapshot(doc(db, "bot_stats", "main"), (docSnap) => {
+                if (docSnap.exists()) {
+                    const stats = docSnap.data();
+                    const totalSubscribers = stats.abone_sayisi || 0;
+                    statsContent.innerHTML = `
+                        <div class="bg-indigo-900 rounded-xl p-4 shadow-lg">
+                            <h3 class="text-lg font-bold text-fuchsia-300">Genel İstatistikler</h3>
+                            <p class="text-gray-400 text-sm mt-2">
+                                <span class="font-semibold text-white">Grup Sayısı:</span> ${stats.grup_sayisi || 0}<br>
+                                <span class="font-semibold text-white">Kullanıcı Sayısı:</span> ${stats.kullanici_sayisi || 0}<br>
+                                <span class="font-semibold text-white">Tıklanma Sayısı:</span> ${stats.tıklanma_sayisi || 0}<br>
+                                <span class="font-semibold text-white">Manuel Mesajlar:</span> ${stats.manual_messages || 0}<br>
+                                <span class="font-semibold text-white">Abone Sayısı:</span> ${totalSubscribers}
+                            </p>
+                        </div>
+                    `;
+                    renderCommandUsageChart(stats.command_counts);
+                } else {
+                    statsContent.innerHTML = '<p class="text-gray-400">İstatistik verisi bulunamadı.</p>';
+                }
+            });
+        }
+        
+        let commandUsageChart;
+        function renderCommandUsageChart(commandCounts) {
+            const ctx = document.getElementById('commandUsageChart').getContext('2d');
+            const labels = Object.keys(commandCounts);
+            const data = Object.values(commandCounts);
+
+            if (commandUsageChart) {
+                commandUsageChart.destroy();
+            }
+
+            commandUsageChart = new Chart(ctx, {
+                type: 'bar',
+                data: {
+                    labels: labels,
+                    datasets: [{
+                        label: 'Komut Kullanım Sayısı',
+                        data: data,
+                        backgroundColor: 'rgba(236, 72, 153, 0.6)', // fuchsia-500
+                        borderColor: 'rgba(236, 72, 153, 1)',
+                        borderWidth: 1
+                    }]
+                },
+                options: {
+                    scales: {
+                        y: {
+                            beginAtZero: true,
+                            ticks: { color: 'white' },
+                            grid: { color: 'rgba(255,255,255,0.1)' }
+                        },
+                        x: {
+                            ticks: { color: 'white' },
+                            grid: { display: false }
+                        }
+                    },
+                    plugins: {
+                        legend: { labels: { color: 'white' } }
+                    }
+                }
+            });
+        }
+
+        function renderAdminFeedback() {
+            const feedbackList = document.getElementById('feedbackList');
+            feedbackList.innerHTML = '<p class="text-gray-400">Geri bildirimler yükleniyor...</p>';
+            
+            onSnapshot(collection(db, "geribildirimler"), (snapshot) => {
+                feedbackList.innerHTML = '';
+                if (snapshot.empty) {
+                    feedbackList.innerHTML = '<p class="text-gray-400">Henüz geri bildirim yok.</p>';
+                    return;
+                }
+                snapshot.forEach(doc => {
+                    const data = doc.data();
+                    const timestamp = data.timestamp ? new Date(data.timestamp.toDate()).toLocaleString() : 'Tarih belirtilmemiş';
+                    const feedbackItem = document.createElement('div');
+                    feedbackItem.className = 'bg-indigo-900 rounded-xl p-4 shadow-lg';
+                    feedbackItem.innerHTML = `
+                        <div class="text-xs text-gray-400">${timestamp}</div>
+                        <div class="text-sm mt-1">
+                            <span class="font-bold text-fuchsia-300">Kullanıcı:</span> ${data.username || 'Bilinmiyor'} (${data.user_id})
+                        </div>
+                        <p class="text-gray-300 mt-2 text-sm">${data.metin}</p>
+                    `;
+                    feedbackList.appendChild(feedbackItem);
+                });
+            });
+        }
+        
+        document.getElementById('sendAnnouncementBtn').addEventListener('click', async () => {
+            const announcementText = document.getElementById('announcementText').value;
+            const announcementMessage = document.getElementById('announcementMessage');
+            if (announcementText.trim() === '') {
+                announcementMessage.textContent = 'Duyuru metni boş olamaz.';
+                announcementMessage.className = 'text-red-500 font-semibold';
+                return;
+            }
+
+            announcementMessage.textContent = 'Duyuru gönderiliyor...';
+            announcementMessage.className = 'text-fuchsia-400 font-semibold';
+            
+            try {
+                await addDoc(collection(db, "announcements"), {
+                    text: announcementText,
+                    timestamp: new Date(),
+                    status: 'pending'
+                });
+                announcementMessage.textContent = 'Duyuru başarıyla kaydedildi. Bot tarafından gönderilecektir.';
+                announcementMessage.className = 'text-green-500 font-semibold';
+                document.getElementById('announcementText').value = '';
+            } catch (error) {
+                announcementMessage.textContent = `Hata oluştu: ${error.message}`;
+                announcementMessage.className = 'text-red-500 font-semibold';
+            }
+        });
+
+
         // Liderlik Tablosunu Yükleme
         function loadLeaderboard() {
             const leaderboardList = document.getElementById('leaderboardList');
@@ -867,17 +1035,353 @@ Bonuslar, kampanya kural ve şartlarına bağlı olarak bazen oyun oynandıktan 
         // Buton olay dinleyicileri
         playRPSBtn.addEventListener('click', () => showScreen('rps'));
         playTowerBtn.addEventListener('click', () => showScreen('tower'));
+        playSpaceShooterBtn.addEventListener('click', () => showScreen('space-shooter'));
         showShopBtn.addEventListener('click', () => showScreen('shop'));
         showAdminBtn.addEventListener('click', () => showScreen('admin'));
         backToMainFromGameBtn.addEventListener('click', () => showScreen('main'));
         backToMainFromShopBtn.addEventListener('click', () => showScreen('main'));
         backToMainFromAdminBtn.addEventListener('click', () => showScreen('main'));
-
+        
+        document.querySelectorAll('.tab-button').forEach(button => {
+            button.addEventListener('click', (e) => {
+                const tabName = e.target.id.replace('tab-', '');
+                renderAdminPanel(tabName);
+            });
+        });
+        
         // Sayfa yüklendiğinde ana ekranı göster
         document.addEventListener('DOMContentLoaded', () => {
             showScreen('main');
         });
+        
+        // UZAY ATICISI OYUNU
+        const spaceShooterCanvas = document.getElementById('spaceShooterCanvas');
+        const spaceShooterCtx = spaceShooterCanvas.getContext('2d');
+        const startSpaceShooterGameBtn = document.getElementById('startSpaceShooterGameBtn');
+        const restartSpaceShooterGameBtn = document.getElementById('restartSpaceShooterGameBtn');
+        const spaceShooterScoreDisplay = document.getElementById('spaceShooterScoreDisplay');
+        const GAME_OVER_SCREEN_ID = 'gameOverScreen';
+        
+        let player = {
+            x: spaceShooterCanvas.width / 2,
+            y: spaceShooterCanvas.height - 30,
+            width: 20,
+            height: 20,
+            speed: 5
+        };
 
+        let bullets = [];
+        let asteroids = [];
+        let spaceShooterScore = 0;
+        let spaceShooterGameActive = false;
+        let lastBulletTime = 0;
+        const BULLET_COOLDOWN = 400; // ms, mermi hızını düşürdüm
+        let spaceShooterAnimationFrameId;
+        let lives = 3;
+        let currentWave = 1;
+
+        // Güçlendirmeler
+        let upgrades = {
+            bulletSpeed: 2,
+            bulletDamage: 1,
+            bulletCount: 1
+        };
+        const upgradeOptions = [
+            { name: "Mermi Hızı Artışı", type: "bulletSpeed", value: 1 },
+            { name: "Mermi Gücü Artışı", type: "bulletDamage", value: 1 },
+            { name: "Çoklu Mermi", type: "bulletCount", value: 1 }
+        ];
+
+        function startGameLoop() {
+            if (spaceShooterAnimationFrameId) {
+                cancelAnimationFrame(spaceShooterAnimationFrameId);
+            }
+            spaceShooterGameLoop();
+        }
+
+        function initializeSpaceShooterGame() {
+            if (isUserBanned) {
+                showMessage('Yasaklı olduğunuz için oyun oynayamazsınız.', 'error');
+                return;
+            }
+            spaceShooterGameActive = true;
+            spaceShooterScore = 0;
+            bullets = [];
+            asteroids = [];
+            player.x = spaceShooterCanvas.width / 2;
+            spaceShooterScoreDisplay.textContent = `Skor: ${spaceShooterScore} | Dalga: ${currentWave} | Can: ${lives} ❤️`;
+            startSpaceShooterGameBtn.classList.add('hidden');
+            restartSpaceShooterGameBtn.classList.add('hidden');
+            spaceShooterCanvas.classList.remove('hidden');
+
+            lives = 3;
+            currentWave = 1;
+            upgrades = {
+                bulletSpeed: 2,
+                bulletDamage: 1,
+                bulletCount: 1
+            };
+            
+            const gameOverScreen = document.getElementById(GAME_OVER_SCREEN_ID);
+            if (gameOverScreen) gameOverScreen.remove();
+
+            spawnWave();
+            startGameLoop();
+        }
+
+        function spawnWave() {
+            const asteroidCount = 5 + currentWave * 2;
+            const maxHealth = Math.floor(currentWave / 2) + 1; // Dalga seviyesi arttıkça canı artsın
+            for (let i = 0; i < asteroidCount; i++) {
+                asteroids.push({
+                    x: Math.random() * spaceShooterCanvas.width,
+                    y: -20 - Math.random() * 200,
+                    radius: 10 + Math.random() * 15,
+                    speed: 0.5 + Math.random() * 1.5,
+                    health: maxHealth,
+                    maxHealth: maxHealth
+                });
+            }
+        }
+
+        function drawPlayer() {
+            spaceShooterCtx.fillStyle = '#C085E8';
+            spaceShooterCtx.beginPath();
+            spaceShooterCtx.moveTo(player.x, player.y);
+            spaceShooterCtx.lineTo(player.x - player.width / 2, player.y + player.height);
+            spaceShooterCtx.lineTo(player.x + player.width / 2, player.y + player.height);
+            spaceShooterCtx.closePath();
+            spaceShooterCtx.fill();
+        }
+
+        function drawBullets() {
+            spaceShooterCtx.fillStyle = '#4CAF50';
+            bullets.forEach(bullet => {
+                spaceShooterCtx.fillRect(bullet.x, bullet.y, bullet.width, bullet.height);
+            });
+        }
+        
+        function drawAsteroids() {
+            asteroids.forEach(asteroid => {
+                // Can barını çizme
+                const healthBarWidth = asteroid.radius * 2;
+                const healthBarHeight = 3;
+                const healthBarX = asteroid.x - asteroid.radius;
+                const healthBarY = asteroid.y - asteroid.radius - 5;
+                const healthPercentage = asteroid.health / asteroid.maxHealth;
+
+                // Arka plan barı (siyah)
+                spaceShooterCtx.fillStyle = '#333';
+                spaceShooterCtx.fillRect(healthBarX, healthBarY, healthBarWidth, healthBarHeight);
+
+                // Can barı (yeşil/kırmızı)
+                const hue = healthPercentage * 120; // Yeşilden (120) kırmızıya (0)
+                spaceShooterCtx.fillStyle = `hsl(${hue}, 100%, 50%)`;
+                spaceShooterCtx.fillRect(healthBarX, healthBarY, healthBarWidth * healthPercentage, healthBarHeight);
+
+                // Asteroiti çizme
+                spaceShooterCtx.fillStyle = `rgba(176, 176, 176, ${healthPercentage})`;
+                spaceShooterCtx.beginPath();
+                spaceShooterCtx.arc(asteroid.x, asteroid.y, asteroid.radius, 0, Math.PI * 2);
+                spaceShooterCtx.fill();
+            });
+        }
+        
+        function drawExplosion(x, y) {
+            const explosionRadius = 30;
+            let currentRadius = 0;
+            const interval = setInterval(() => {
+                currentRadius += 5;
+                if (currentRadius > explosionRadius) {
+                    clearInterval(interval);
+                    return;
+                }
+                spaceShooterCtx.fillStyle = `rgba(255, 165, 0, ${1 - currentRadius / explosionRadius})`;
+                spaceShooterCtx.beginPath();
+                spaceShooterCtx.arc(x, y, currentRadius, 0, Math.PI * 2);
+                spaceShooterCtx.fill();
+            }, 50);
+        }
+
+        function updateGame() {
+            // Mermi hareketleri
+            bullets = bullets.filter(bullet => bullet.y > 0);
+            bullets.forEach(bullet => bullet.y -= upgrades.bulletSpeed);
+
+            // Asteroit hareketleri
+            asteroids = asteroids.filter(asteroid => {
+                if (asteroid.y > spaceShooterCanvas.height + asteroid.radius) {
+                    lives--;
+                    return false;
+                }
+                return true;
+            });
+            asteroids.forEach(asteroid => asteroid.y += asteroid.speed);
+
+            // Çarpışma kontrolü
+            bullets.forEach((bullet, bulletIndex) => {
+                asteroids.forEach((asteroid, asteroidIndex) => {
+                    const dx = bullet.x - asteroid.x;
+                    const dy = bullet.y - asteroid.y;
+                    const distance = Math.sqrt(dx * dx + dy * dy);
+
+                    if (distance < asteroid.radius + bullet.width / 2) {
+                        // Vuruş oldu
+                        asteroid.health -= upgrades.bulletDamage;
+                        bullets.splice(bulletIndex, 1);
+                        
+                        if (asteroid.health <= 0) {
+                            drawExplosion(asteroid.x, asteroid.y);
+                            asteroids.splice(asteroidIndex, 1);
+                        }
+                    }
+                });
+            });
+
+            // Oyuncu-asteroit çarpışma kontrolü
+            asteroids.forEach(asteroid => {
+                const dx = player.x - asteroid.x;
+                const dy = player.y - asteroid.y;
+                const distance = Math.sqrt(dx * dx + dy * dy);
+                if (distance < asteroid.radius + player.width / 2) {
+                    lives = 0;
+                }
+            });
+
+            const heartEmojis = '❤️'.repeat(lives > 0 ? lives : 0);
+            spaceShooterScoreDisplay.innerHTML = `Skor: ${spaceShooterScore} | Dalga: ${currentWave} | Can: ${heartEmojis || '💔'}`;
+
+
+            if (lives <= 0) {
+                endSpaceShooterGame();
+            }
+
+            if (asteroids.length === 0) {
+                currentWave++;
+                spaceShooterScore += currentWave * 25; // Skor dalga başına dörde bir oranında azaltıldı
+                showUpgradeScreen();
+            }
+        }
+
+        function drawSpaceShooterGame() {
+            spaceShooterCtx.clearRect(0, 0, spaceShooterCanvas.width, spaceShooterCanvas.height);
+            drawPlayer();
+            drawBullets();
+            drawAsteroids();
+        }
+
+        function spaceShooterGameLoop(timestamp) {
+            if (!spaceShooterGameActive) {
+                return;
+            }
+
+            updateGame();
+            drawSpaceShooterGame();
+            
+            // Otomatik atış
+            if (timestamp - lastBulletTime > BULLET_COOLDOWN) {
+                for (let i = 0; i < upgrades.bulletCount; i++) {
+                    bullets.push({
+                        x: player.x + (i - Math.floor(upgrades.bulletCount / 2)) * 10,
+                        y: player.y,
+                        width: 4,
+                        height: 10
+                    });
+                }
+                lastBulletTime = timestamp;
+            }
+
+            spaceShooterAnimationFrameId = requestAnimationFrame(spaceShooterGameLoop);
+        }
+
+        function endSpaceShooterGame() {
+            spaceShooterGameActive = false;
+            cancelAnimationFrame(spaceShooterAnimationFrameId);
+            
+            showGameOverScreen();
+
+            if (auth.currentUser) {
+                const userScoreRef = doc(db, "scores", auth.currentUser.uid);
+                getDoc(userScoreRef).then(docSnap => {
+                    const currentScore = docSnap.data()?.score || 0;
+                    setDoc(userScoreRef, { score: currentScore + spaceShooterScore }, { merge: true });
+                });
+            }
+        }
+
+        function showGameOverScreen() {
+            const gameOverScreen = document.createElement('div');
+            gameOverScreen.id = GAME_OVER_SCREEN_ID;
+            gameOverScreen.className = 'fixed inset-0 z-20 flex items-center justify-center bg-black bg-opacity-80 p-4';
+            gameOverScreen.innerHTML = `
+                <div class="bg-indigo-950 rounded-2xl p-6 shadow-2xl text-center max-w-sm w-full space-y-4">
+                    <h3 class="text-2xl font-bold text-fuchsia-300">Oyun Bitti!</h3>
+                    <p class="text-gray-300">Skorunuz: ${spaceShooterScore}</p>
+                    <button id="closeGameOverBtn" class="w-full bg-fuchsia-600 text-white font-semibold py-3 px-6 rounded-xl hover:bg-fuchsia-700 transition-colors duration-200">Tamam</button>
+                </div>
+            `;
+            document.body.appendChild(gameOverScreen);
+
+            document.getElementById('closeGameOverBtn').addEventListener('click', () => {
+                document.getElementById(GAME_OVER_SCREEN_ID).remove();
+                restartSpaceShooterGameBtn.classList.remove('hidden');
+                spaceShooterCanvas.classList.add('hidden');
+            });
+        }
+        
+        function showUpgradeScreen() {
+             spaceShooterGameActive = false;
+             cancelAnimationFrame(spaceShooterAnimationFrameId);
+             
+             const upgradeScreen = document.createElement('div');
+             upgradeScreen.id = 'upgradeScreen';
+             upgradeScreen.className = 'fixed inset-0 z-20 flex items-center justify-center bg-black bg-opacity-80 p-4';
+             upgradeScreen.innerHTML = `
+                 <div class="bg-indigo-950 rounded-2xl p-6 shadow-2xl text-center max-w-sm w-full space-y-4">
+                     <h3 class="text-2xl font-bold text-fuchsia-300">Dalga ${currentWave - 1} Tamamlandı!</h3>
+                     <p class="text-gray-300">Bir sonraki dalgaya geçmeden önce bir geliştirme seçin:</p>
+                     <div id="upgradeOptions" class="space-y-3"></div>
+                 </div>
+             `;
+             document.body.appendChild(upgradeScreen);
+
+             const optionsContainer = document.getElementById('upgradeOptions');
+             const shuffledOptions = upgradeOptions.sort(() => 0.5 - Math.random()).slice(0, 3);
+             shuffledOptions.forEach(option => {
+                 const button = document.createElement('button');
+                 button.className = 'w-full bg-indigo-900 text-white font-semibold py-3 px-6 rounded-xl hover:bg-indigo-800 transition-colors duration-200';
+                 button.textContent = option.name;
+                 button.addEventListener('click', () => {
+                     upgrades[option.type] += option.value;
+                     document.getElementById('upgradeScreen').remove();
+                     spawnWave();
+                     spaceShooterGameActive = true;
+                     startGameLoop();
+                 });
+                 optionsContainer.appendChild(button);
+             });
+        }
+
+
+        startSpaceShooterGameBtn.addEventListener('click', initializeSpaceShooterGame);
+        restartSpaceShooterGameBtn.addEventListener('click', initializeSpaceShooterGame);
+        
+        // Oyuncu kontrolü
+        spaceShooterCanvas.addEventListener('mousemove', (e) => {
+            if (spaceShooterGameActive) {
+                const rect = spaceShooterCanvas.getBoundingClientRect();
+                const scaleX = spaceShooterCanvas.width / rect.width;
+                player.x = (e.clientX - rect.left) * scaleX;
+            }
+        });
+        spaceShooterCanvas.addEventListener('touchmove', (e) => {
+             e.preventDefault();
+             if (spaceShooterGameActive) {
+                const rect = spaceShooterCanvas.getBoundingClientRect();
+                const scaleX = spaceShooterCanvas.width / rect.width;
+                player.x = (e.touches[0].clientX - rect.left) * scaleX;
+             }
+        });
     </script>
 </body>
 </html>
