@@ -36,11 +36,7 @@
             to { transform: translateX(-100%); }
         }
         /* Custom styles for the game section */
-        #spaceShooterCanvas {
-            box-shadow: 0 5px 20px rgba(0, 0, 0, 0.5);
-            touch-action: manipulation;
-        }
-        #gameCanvas {
+        #spaceShooterCanvas, #gameCanvas {
             box-shadow: 0 5px 20px rgba(0, 0, 0, 0.5);
             touch-action: manipulation;
         }
@@ -342,9 +338,12 @@ Bonuslar, kampanya kural ve şartlarına bağlı olarak bazen oyun oynandıktan 
              if (user) {
                 window.currentUser = user;
                 const tgUser = WebApp.initDataUnsafe?.user;
-
+                
+                // Telegram ID'si varsa, Firebase UID'sini bu ID'den türetin
+                const firebaseUid = tgUser ? `telegram_${tgUser.id}` : user.uid;
+                
                 // Kullanıcı verisini Firestore'da doğru yola kaydedin
-                const userDocRef = doc(db, `artifacts/${appId}/users/${user.uid}/data/profile`);
+                const userDocRef = doc(db, `artifacts/${appId}/users/${firebaseUid}/data/profile`);
                 
                 // Telegram user verisi mevcutsa kaydedin, yoksa varsayılan değerleri kullanın
                 if (tgUser) {
@@ -357,18 +356,52 @@ Bonuslar, kampanya kural ve şartlarına bağlı olarak bazen oyun oynandıktan 
                     }, { merge: true });
                     document.getElementById('profileIcon').textContent = tgUser.first_name.charAt(0).toUpperCase();
                     document.getElementById('username').textContent = tgUser.first_name || 'Kullanıcı';
-                    document.getElementById('userId').textContent = `@${tgUser.username || user.uid}`;
+                    document.getElementById('userId').textContent = `@${tgUser.username || firebaseUid}`;
                 } else {
                     // Telegram user verisi yoksa anonim kullanıcı olarak göster
                      await setDoc(userDocRef, {
                         firstName: 'Anonim',
                         lastLogin: new Date(),
-                        telegramId: user.uid
+                        telegramId: firebaseUid
                     }, { merge: true });
                     document.getElementById('profileIcon').textContent = 'A';
                     document.getElementById('username').textContent = 'Anonim Kullanıcı';
-                    document.getElementById('userId').textContent = user.uid;
+                    document.getElementById('userId').textContent = firebaseUid;
                 }
+                
+                // Kullanıcı durumu ve skorlarını dinle
+                const userProfileRef = doc(db, `artifacts/${appId}/users/${firebaseUid}/data/profile`);
+                const userScoreRef = doc(db, `artifacts/${appId}/users/${firebaseUid}/data/scores`);
+                
+                onSnapshot(userProfileRef, (docSnap) => {
+                    if (docSnap.exists()) {
+                        const userData = docSnap.data();
+                        window.isUserBanned = userData.isBanned || false;
+                        
+                        // Kullanıcının Telegram ID'si admin listesinde mi kontrol et
+                        window.isAdmin = ADMIN_IDS.includes(String(userData.telegramId));
+
+                        if (window.isUserBanned) {
+                            showMessage('Hesabınız yasaklanmıştır. Lütfen yönetici ile iletişime geçin.', 'error');
+                        }
+                        
+                        if (window.isAdmin) {
+                            showAdminBtn.style.display = 'block';
+                            // Adminse istatistikleri ve geri bildirimleri yükle
+                            renderAdminStats();
+                            renderAdminFeedback();
+                        }
+                    }
+                });
+
+                onSnapshot(userScoreRef, (docSnap) => {
+                    const scoreData = docSnap.data();
+                    const totalScore = scoreData ? (scoreData.score || 0) : 0;
+                    document.getElementById('userScore').textContent = `${totalScore} Puan`;
+                });
+
+                loadLeaderboard();
+                renderShopItems();
              }
         });
 
@@ -431,8 +464,6 @@ Bonuslar, kampanya kural ve şartlarına bağlı olarak bazen oyun oynandıktan 
 
         const ADMIN_IDS = ["6817203711", "5553777620", "1398811649", "6361109910", "1469776230", "1035117468"];
 
-        let isUserBanned = false;
-        
         function showScreen(screen) {
             mainContent.classList.add('hidden');
             gameContainer.classList.add('hidden');
@@ -442,24 +473,40 @@ Bonuslar, kampanya kural ve şartlarına bağlı olarak bazen oyun oynandıktan 
             if (screen === 'main') {
                 mainContent.classList.remove('hidden');
             } else if (screen === 'tower') {
+                if (window.isUserBanned) {
+                     showMessage('Yasaklı olduğunuz için oyun oynayamazsınız.', 'error');
+                     return;
+                }
                 gameContainer.classList.remove('hidden');
                 rpsGameScreen.classList.add('hidden');
                 spaceShooterGameScreen.classList.add('hidden');
                 towerGameScreen.classList.remove('hidden');
                 initializeTowerGame();
             } else if (screen === 'rps') {
+                if (window.isUserBanned) {
+                     showMessage('Yasaklı olduğunuz için oyun oynayamazsınız.', 'error');
+                     return;
+                }
                 gameContainer.classList.remove('hidden');
                 towerGameScreen.classList.add('hidden');
                 spaceShooterGameScreen.classList.add('hidden');
                 rpsGameScreen.classList.remove('hidden');
                 resetRPSGame();
             } else if (screen === 'space-shooter') {
+                if (window.isUserBanned) {
+                     showMessage('Yasaklı olduğunuz için oyun oynayamazsınız.', 'error');
+                     return;
+                }
                 gameContainer.classList.remove('hidden');
                 towerGameScreen.classList.add('hidden');
                 rpsGameScreen.classList.add('hidden');
                 spaceShooterGameScreen.classList.remove('hidden');
                 initializeSpaceShooterGame();
             } else if (screen === 'shop') {
+                 if (window.isUserBanned) {
+                     showMessage('Yasaklı olduğunuz için işlem yapamazsınız.', 'error');
+                     return;
+                }
                 shopContainer.classList.remove('hidden');
             } else if (screen === 'admin') {
                 adminPanel.classList.remove('hidden');
@@ -472,46 +519,6 @@ Bonuslar, kampanya kural ve şartlarına bağlı olarak bazen oyun oynandıktan 
                 }
             }
         }
-
-        let isAdmin = false;
-
-        auth.onAuthStateChanged(user => {
-            if (user) {
-                const userDocRef = doc(db, `artifacts/${appId}/users/${user.uid}/data/profile`);
-                onSnapshot(userDocRef, (docSnap) => {
-                    if (docSnap.exists()) {
-                        const userData = docSnap.data();
-                        isUserBanned = userData.isBanned || false;
-                        
-                        // Kullanıcının Telegram ID'si admin listesinde mi kontrol et
-                        isAdmin = ADMIN_IDS.includes(String(userData.telegramId));
-
-                        if (isUserBanned) {
-                            showMessage('Hesabınız yasaklanmıştır. Lütfen yönetici ile iletişime geçin.', 'error');
-                        }
-                        
-                        if (isAdmin) {
-                            showAdminBtn.style.display = 'block';
-                            // Adminse istatistikleri ve geri bildirimleri yükle
-                            renderAdminStats();
-                            renderAdminFeedback();
-                        }
-                    }
-                });
-
-                const userScoreRef = doc(db, `artifacts/${appId}/users/${user.uid}/data/scores`);
-                onSnapshot(userScoreRef, (docSnap) => {
-                    const scoreData = docSnap.data();
-                    const totalScore = scoreData ? (scoreData.score || 0) : 0;
-                    document.getElementById('userScore').textContent = `${totalScore} Puan`;
-                });
-
-                loadLeaderboard();
-                renderShopItems();
-            } else {
-                console.log("Kullanıcı oturumu açılmamış.");
-            }
-        });
 
         // OYUN KODLARI BURADA BAŞLAR
 
@@ -567,7 +574,7 @@ Bonuslar, kampanya kural ve şartlarına bağlı olarak bazen oyun oynandıktan 
         }
 
         function placeBlock() {
-            if (isUserBanned) {
+            if (window.isUserBanned) {
                 showMessage('Yasaklı olduğunuz için oyun oynayamazsınız.', 'error');
                 return;
             }
@@ -584,10 +591,12 @@ Bonuslar, kampanya kural ve şartlarına bağlı olarak bazen oyun oynandıktan 
                 if (score % 10 === 0 && score < MAX_SCORE) {
                     blockSpeed += 0.2;
                 }
-
-                if (auth.currentUser) {
-                    const userScoreRef = doc(db, `artifacts/${appId}/users/${auth.currentUser.uid}/data/scores`);
-                    const publicScoreRef = doc(db, `artifacts/${appId}/public/data/leaderboard_scores`, auth.currentUser.uid);
+                
+                // Firestore'a puanı kaydet
+                const userUid = auth.currentUser?.uid;
+                if (userUid) {
+                    const userScoreRef = doc(db, `artifacts/${appId}/users/${userUid}/data/scores`);
+                    const publicScoreRef = doc(db, `artifacts/${appId}/public/data/leaderboard_scores`, userUid);
                     
                     getDoc(userScoreRef).then(docSnap => {
                         const currentScore = docSnap.data()?.score || 0;
@@ -656,7 +665,7 @@ Bonuslar, kampanya kural ve şartlarına bağlı olarak bazen oyun oynandıktan 
         }
         
         function initializeTowerGame() {
-            if (isUserBanned) {
+            if (window.isUserBanned) {
                 showMessage('Yasaklı olduğunuz için oyun oynayamazsınız.', 'error');
                 return;
             }
@@ -703,7 +712,7 @@ Bonuslar, kampanya kural ve şartlarına bağlı olarak bazen oyun oynandıktan 
         const playAgainBtn = document.getElementById('playAgainBtn');
 
         function playRPS(userChoice) {
-            if (isUserBanned) {
+            if (window.isUserBanned) {
                 showMessage('Yasaklı olduğunuz için oyun oynayamazsınız.', 'error');
                 return;
             }
@@ -727,10 +736,11 @@ Bonuslar, kampanya kural ve şartlarına bağlı olarak bazen oyun oynandıktan 
             } else {
                 resultText = `Senin seçimin: ${userChoice} | Rakibin seçimi: ${botChoice} | Sonuç: Kaybettin!`;
             }
-
-            if (points > 0 && auth.currentUser) {
-                 const userScoreRef = doc(db, `artifacts/${appId}/users/${auth.currentUser.uid}/data/scores`);
-                 const publicScoreRef = doc(db, `artifacts/${appId}/public/data/leaderboard_scores`, auth.currentUser.uid);
+            
+            const userUid = auth.currentUser?.uid;
+            if (points > 0 && userUid) {
+                 const userScoreRef = doc(db, `artifacts/${appId}/users/${userUid}/data/scores`);
+                 const publicScoreRef = doc(db, `artifacts/${appId}/public/data/leaderboard_scores`, userUid);
                  getDoc(userScoreRef).then(docSnap => {
                      setDoc(userScoreRef, { score: (docSnap.data()?.score || 0) + points }, { merge: true });
                      setDoc(publicScoreRef, { score: (docSnap.data()?.score || 0) + points, username: document.getElementById('username').textContent, telegramId: WebApp.initDataUnsafe?.user?.id || null }, { merge: true });
@@ -791,13 +801,14 @@ Bonuslar, kampanya kural ve şartlarına bağlı olarak bazen oyun oynandıktan 
         }
         
         function buyItem(itemPrice) {
-            if (isUserBanned) {
+            if (window.isUserBanned) {
                  showMessage('Yasaklı olduğunuz için işlem yapamazsınız.', 'error');
                  return;
             }
-            if (auth.currentUser) {
-                const userScoreRef = doc(db, `artifacts/${appId}/users/${auth.currentUser.uid}/data/scores`);
-                const publicScoreRef = doc(db, `artifacts/${appId}/public/data/leaderboard_scores`, auth.currentUser.uid);
+            const userUid = auth.currentUser?.uid;
+            if (userUid) {
+                const userScoreRef = doc(db, `artifacts/${appId}/users/${userUid}/data/scores`);
+                const publicScoreRef = doc(db, `artifacts/${appId}/public/data/leaderboard_scores`, userUid);
                 getDoc(userScoreRef).then(docSnap => {
                     const currentScore = docSnap.data()?.score || 0;
                     if (currentScore >= itemPrice) {
@@ -840,7 +851,7 @@ Bonuslar, kampanya kural ve şartlarına bağlı olarak bazen oyun oynandıktan 
         }
         
         function renderAdminUserList() {
-            if (!isAdmin) return; // Sadece admin ise bu fonksiyon çalışsın
+            if (!window.isAdmin) return; // Sadece admin ise bu fonksiyon çalışsın
             const adminUserList = document.getElementById('adminUserList');
             adminUserList.innerHTML = '<p class="text-gray-400">Kullanıcılar yükleniyor...</p>';
             
@@ -1027,6 +1038,10 @@ Bonuslar, kampanya kural ve şartlarına bağlı olarak bazen oyun oynandıktan 
         }
         
         document.getElementById('sendAnnouncementBtn').addEventListener('click', async () => {
+            if (!window.isAdmin) {
+                showMessage('Bu işlemi yapmaya yetkiniz yok.', 'error');
+                return;
+            }
             const announcementText = document.getElementById('announcementText').value;
             const announcementMessage = document.getElementById('announcementMessage');
             if (announcementText.trim() === '') {
@@ -1160,7 +1175,7 @@ Bonuslar, kampanya kural ve şartlarına bağlı olarak bazen oyun oynandıktan 
         }
 
         function initializeSpaceShooterGame() {
-            if (isUserBanned) {
+            if (window.isUserBanned) {
                 showMessage('Yasaklı olduğunuz için oyun oynayamazsınız.', 'error');
                 return;
             }
@@ -1358,10 +1373,11 @@ Bonuslar, kampanya kural ve şartlarına bağlı olarak bazen oyun oynandıktan 
             cancelAnimationFrame(spaceShooterAnimationFrameId);
             
             showGameOverScreen();
-
-            if (auth.currentUser) {
-                const userScoreRef = doc(db, `artifacts/${appId}/users/${auth.currentUser.uid}/data/scores`);
-                const publicScoreRef = doc(db, `artifacts/${appId}/public/data/leaderboard_scores`, auth.currentUser.uid);
+            
+            const userUid = auth.currentUser?.uid;
+            if (userUid) {
+                const userScoreRef = doc(db, `artifacts/${appId}/users/${userUid}/data/scores`);
+                const publicScoreRef = doc(db, `artifacts/${appId}/public/data/leaderboard_scores`, userUid);
                 getDoc(userScoreRef).then(docSnap => {
                     const currentScore = docSnap.data()?.score || 0;
                     const newScore = currentScore + spaceShooterScore;
