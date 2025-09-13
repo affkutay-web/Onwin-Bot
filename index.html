@@ -13,6 +13,10 @@
     <style>
         body {
             font-family: 'Inter', sans-serif;
+            -webkit-user-select: none;
+            -moz-user-select: none;
+            -ms-user-select: none;
+            user-select: none;
         }
         .animate-fadeIn {
             animation: fadeIn 0.8s forwards;
@@ -186,7 +190,7 @@ Bonuslar, kampanya kural ve şartlarına bağlı olarak bazen oyun oynandıktan 
     <div id="gameContainer" class="game-container hidden fixed inset-0 z-10 p-4 bg-gray-950 overflow-y-auto">
         <div id="towerGameScreen" class="game-screen w-full flex flex-col items-center justify-center p-4">
             <div class="card w-full max-w-lg bg-indigo-950 rounded-2xl p-6 shadow-xl flex flex-col items-center gap-4">
-                <h2 class="text-2xl font-bold text-fuchsia-300">Kule Yıkma Oyunu</h2>
+                <h2 class="text-2xl font-bold text-fuchsia-300">Kule Yıkma Oynu</h2>
                 <div id="scoreDisplay" class="text-3xl font-bold text-fuchsia-400">Skor: 0</div>
                 <canvas id="gameCanvas" width="300" height="400" class="w-full h-auto bg-gray-900 rounded-lg shadow-inner"></canvas>
                 <div class="flex flex-col gap-2 mt-4 w-full max-w-xs">
@@ -309,12 +313,26 @@ Bonuslar, kampanya kural ve şartlarına bağlı olarak bazen oyun oynandıktan 
         
         // Firebase uygulamasını başlatın
         // Firebase ayarlarını doğrudan bu fonksiyona iletiyoruz.
-        const firebaseApp = initializeApp(firebaseConfig);
-        const auth = getAuth(firebaseApp);
-        const db = getFirestore(firebaseApp);
-        
+        let firebaseApp;
+        let auth;
+        let db;
+
+        try {
+            firebaseApp = initializeApp(firebaseConfig);
+            auth = getAuth(firebaseApp);
+            db = getFirestore(firebaseApp);
+        } catch (error) {
+            console.error("Firebase Initialization Error:", error);
+            // Uygulamanın Firebase olmadan çalışmaya devam etmesi için burada çıkış yapmıyoruz
+            // Bunun yerine, Firebase'e bağımlı fonksiyonları korumak için hata mesajı gösterilebilir.
+        }
+
         // Kullanıcı kimlik doğrulamasını global token ile yapın
         async function authenticateUser() {
+            if (!auth) {
+                console.error("Firebase Auth not initialized. Skipping authentication.");
+                return null;
+            }
             try {
                 if (initialAuthToken) {
                     const userCredential = await signInWithCustomToken(auth, initialAuthToken);
@@ -342,13 +360,10 @@ Bonuslar, kampanya kural ve şartlarına bağlı olarak bazen oyun oynandıktan 
                 window.currentUser = user;
                 const tgUser = WebApp.initDataUnsafe?.user;
                 
-                // Telegram ID'si varsa, Firebase UID'sini bu ID'den türetin
                 const firebaseUid = tgUser ? `telegram_${tgUser.id}` : user.uid;
                 
-                // Kullanıcı verisini Firestore'da doğru yola kaydedin
                 const userDocRef = doc(db, `artifacts/${appId}/users/${firebaseUid}/data/profile`);
                 
-                // Telegram user verisi mevcutsa kaydedin, yoksa varsayılan değerleri kullanın
                 if (tgUser) {
                     await setDoc(userDocRef, {
                         firstName: tgUser.first_name,
@@ -361,7 +376,6 @@ Bonuslar, kampanya kural ve şartlarına bağlı olarak bazen oyun oynandıktan 
                     document.getElementById('username').textContent = tgUser.first_name || 'Kullanıcı';
                     document.getElementById('userId').textContent = `@${tgUser.username || firebaseUid}`;
                 } else {
-                    // Telegram user verisi yoksa anonim kullanıcı olarak göster
                      await setDoc(userDocRef, {
                         firstName: 'Anonim',
                         lastLogin: new Date(),
@@ -372,7 +386,6 @@ Bonuslar, kampanya kural ve şartlarına bağlı olarak bazen oyun oynandıktan 
                     document.getElementById('userId').textContent = firebaseUid;
                 }
                 
-                // Kullanıcı durumu ve skorlarını dinle
                 const userProfileRef = doc(db, `artifacts/${appId}/users/${firebaseUid}/data/profile`);
                 const userScoreRef = doc(db, `artifacts/${appId}/users/${firebaseUid}/data/scores`);
                 
@@ -381,7 +394,6 @@ Bonuslar, kampanya kural ve şartlarına bağlı olarak bazen oyun oynandıktan 
                         const userData = docSnap.data();
                         window.isUserBanned = userData.isBanned || false;
                         
-                        // Kullanıcının Telegram ID'si admin listesinde mi kontrol et
                         window.isAdmin = ADMIN_IDS.includes(String(userData.telegramId));
 
                         if (window.isUserBanned) {
@@ -390,7 +402,6 @@ Bonuslar, kampanya kural ve şartlarına bağlı olarak bazen oyun oynandıktan 
                         
                         if (window.isAdmin) {
                             showAdminBtn.style.display = 'block';
-                            // Adminse istatistikleri ve geri bildirimleri yükle
                             renderAdminStats();
                             renderAdminFeedback();
                         }
