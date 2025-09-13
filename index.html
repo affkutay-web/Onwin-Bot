@@ -302,10 +302,13 @@ Bonuslar, kampanya kural ve şartlarına bağlı olarak bazen oyun oynandıktan 
         setLogLevel('debug');
 
         // Ortam tarafından sağlanan global değişkenleri kullanın
+        // Bu değişkenler, Firebase projenizin ayarlarını içerir ve otomatik olarak sağlanır.
         const appId = typeof __app_id !== 'undefined' ? __app_id : 'default-app-id';
         const firebaseConfig = JSON.parse(typeof __firebase_config !== 'undefined' ? __firebase_config : '{}');
         const initialAuthToken = typeof __initial_auth_token !== 'undefined' ? __initial_auth_token : null;
-
+        
+        // Firebase uygulamasını başlatın
+        // Firebase ayarlarını doğrudan bu fonksiyona iletiyoruz.
         const firebaseApp = initializeApp(firebaseConfig);
         const auth = getAuth(firebaseApp);
         const db = getFirestore(firebaseApp);
