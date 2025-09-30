@@ -1,0 +1,27 @@
+{
+  "name": "analytics-dashboard",
+  "version": "1.0.0",
+  "description": "Cuttly Analytics Dashboard - URL kısaltma servisi için analitik dashboard",
+  "engines": {
+    "node": "20"
+  },
+  "main": "main.js",
+  "scripts": {
+    "start": "python -m http.server 8000",
+    "dev": "python -m http.server 8000"
+  },
+  "dependencies": {
+    "axios": "^1.5.0",
+    "firebase-admin": "^13.5.0",
+    "firebase-functions": "^6.4.0"
+  },
+  "keywords": [
+    "analytics",
+    "dashboard",
+    "url-shortener",
+    "cuttly",
+    "statistics"
+  ],
+  "author": "Siz",
+  "license": "MIT"
+}
